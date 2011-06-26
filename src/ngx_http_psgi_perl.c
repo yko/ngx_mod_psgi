@@ -32,12 +32,10 @@ SV *ngx_http_psgi_create_env(ngx_http_request_t *r, SV *app)
     hv_store(env, "REQUEST_METHOD", sizeof("REQUEST_METHOD")-1, newSVpv((char *)r->method_name.data, r->method_name.len), 0);
     hv_store(env, "SCRIPT_NAME", sizeof("SCRIPT_NAME")-1, app, 0);
     hv_store(env, "QUERY_STRING", sizeof("QUERY_STRING")-1, newSVpv((char *)r->args.data, r->args.len), 0);
-    // TODO: apend nginx version to server name?
-    hv_store(env, "SERVER_NAME", sizeof("SERVER_NAME")-1, newSVpv("nginx", 5), 0);
+    // FIXME: Send real hostname
+    hv_store(env, "SERVER_NAME", sizeof("SERVER_NAME")-1, newSVpv("127.0.0.1", 9), 0);
     hv_store(env, "REMOTE_ADDR", sizeof("REMOTE_ADDR")-1, newSVpv((char *)r->connection->addr_text.data, r->connection->addr_text.len), 0);
     /* TODO
-     *
-     * implement streams (input, errors)
      *
      * PATH_INFO
      * REQUEST_URI
@@ -47,6 +45,7 @@ SV *ngx_http_psgi_create_env(ngx_http_request_t *r, SV *app)
      * psgi.multithread
      * psgi.multiprocess
      * CONTENT_LENGTH
+     * CONTENT_TYPE
      */
 
     part = &r->headers_in.headers.part;
