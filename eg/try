@@ -1,0 +1,97 @@
+#!/usr/bin/env perl
+use strict;
+use warnings;
+use FindBin;
+
+# this actually should be Makefile
+
+my $nginx     = 'http://nginx.org/download/nginx-1.0.4.tar.gz';
+my $nginx_dir = 'nginx-1.0.4';
+local $/ = undef;
+
+chdir($FindBin::Bin);
+
+for ('log', 'tmp', 'tmp/body') {
+    mkdir($_) or die "Unable to create dir $_: $!" unless -d $_;
+}
+
+unless (-e "$FindBin::Bin/$nginx_dir") {
+    system("curl -C - -O $nginx")        and die "Network error?\n";
+    system("tar xzf nginx-1.0.4.tar.gz") and die "Have not tar?\n";
+}
+
+my $tmp_conf = "$FindBin::Bin/tmp/nginx.conf";
+unless (-f $tmp_conf) {
+
+    my $conf_template = "$FindBin::Bin/eg/nginx.conf";
+
+    my $conf_body = do { open my $CNF, '<', $conf_template; <$CNF> };
+
+    $conf_body
+      =~ s#^\s*error_log\s+.*#error_log "$FindBin::Bin/log/error.local.log" debug;#;
+    $conf_body =~ s#(\n\s*psgi)\s+.*#$1 "$FindBin::Bin/eg/helloworld.psgi";#;
+
+    open my $CNF, '>', $tmp_conf
+      or die "Unable to create temporarry conf '$tmp_conf': $!";
+    print $CNF $conf_body;
+}
+
+# Kill running nginx
+my $pidfile = "$FindBin::Bin/tmp/nginx.pid";
+if (-f $pidfile) {
+
+    my $pid = do { open my $PID, '<', $pidfile; <$PID> };
+    kill 2, $pid;
+}
+
+chdir($nginx_dir);
+
+unless (-f "$FindBin::Bin/$nginx_dir/Makefile") {
+
+    # minimalistic build
+    my $config_opts = <<END;
+--without-http_charset_module
+--without-http_gzip_module
+--without-http_ssi_module
+--without-http_userid_module
+--without-http_access_module
+--without-http_auth_basic_module
+--without-http_autoindex_module
+--without-http_geo_module
+--without-http_map_module
+--without-http_split_clients_module
+--without-http_referer_module
+--without-http_rewrite_module
+--without-http_proxy_module
+--without-http_fastcgi_module
+--without-http_uwsgi_module
+--without-http_scgi_module
+--without-http_memcached_module
+--without-http_limit_zone_module
+--without-http_limit_req_module
+--without-http_empty_gif_module
+--without-http_browser_module
+--without-http_upstream_ip_hash_module
+
+--conf-path="$tmp_conf"
+--error-log-path="$FindBin::Bin/log/error.log"
+--http-client-body-temp-path="$FindBin::Bin/tmp/body"
+--http-log-path="$FindBin::Bin/log/access.log"
+--lock-path="$FindBin::Bin/tmp/nginx.lock"
+--pid-path="$pidfile"
+--with-debug
+--add-module="$FindBin::Bin"
+END
+
+    $config_opts =~ s/\n/ /g;
+    warn "Configuring with opts:\n$config_opts\n";
+    system("./configure $config_opts") and die "Configure failed\n";
+}
+
+`rm $FindBin::Bin/log/*`;
+system("make")       and die "make filed\n";
+system("objs/nginx") and die "nginx failed to start\n";
+
+print "\nSending simple request with body 'Client request body'\nAnswer:\n\n";
+
+system('curl http://127.0.0.1:3000/ -d "Client request body"');

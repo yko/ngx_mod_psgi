@@ -1,0 +1,6 @@
+.*
+!.gitignore
+*~
+log/*
+tmp/*
+nginx-1.0.4*
