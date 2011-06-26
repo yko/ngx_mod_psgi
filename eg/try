@@ -2,34 +2,35 @@
 use strict;
 use warnings;
 use FindBin;
-
+use Cwd 'abs_path';
 # this actually should be Makefile
 
 my $nginx     = 'http://nginx.org/download/nginx-1.0.4.tar.gz';
 my $nginx_dir = 'nginx-1.0.4';
 local $/ = undef;
 
-chdir($FindBin::Bin);
+my $home = abs_path("$FindBin::Bin/..");
+chdir($home);
 
 for ('log', 'tmp', 'tmp/body') {
-    mkdir($_) or die "Unable to create dir $_: $!" unless -d $_;
+    mkdir("$home/$_") or die "Unable to create dir $_: $!" unless -d $_;
 }
 
-unless (-e "$FindBin::Bin/$nginx_dir") {
+unless (-e "$home/$nginx_dir") {
     system("curl -C - -O $nginx")        and die "Network error?\n";
     system("tar xzf nginx-1.0.4.tar.gz") and die "Have not tar?\n";
 }
 
-my $tmp_conf = "$FindBin::Bin/tmp/nginx.conf";
+my $tmp_conf = "$home/tmp/nginx.conf";
 unless (-f $tmp_conf) {
 
-    my $conf_template = "$FindBin::Bin/eg/nginx.conf";
+    my $conf_template = "$home/eg/nginx.conf";
 
     my $conf_body = do { open my $CNF, '<', $conf_template; <$CNF> };
 
     $conf_body
-      =~ s#^\s*error_log\s+.*#error_log "$FindBin::Bin/log/error.local.log" debug;#;
-    $conf_body =~ s#(\n\s*psgi)\s+.*#$1 "$FindBin::Bin/eg/helloworld.psgi";#;
+      =~ s#^\s*error_log\s+.*#error_log "$home/log/error.local.log" debug;#;
+    $conf_body =~ s#(\n\s*psgi)\s+.*#$1 "$home/eg/helloworld.psgi";#;
 
     open my $CNF, '>', $tmp_conf
       or die "Unable to create temporarry conf '$tmp_conf': $!";
@@ -37,16 +38,16 @@ unless (-f $tmp_conf) {
 }
 
 # Kill running nginx
-my $pidfile = "$FindBin::Bin/tmp/nginx.pid";
+my $pidfile = "$home/tmp/nginx.pid";
 if (-f $pidfile) {
 
     my $pid = do { open my $PID, '<', $pidfile; <$PID> };
     kill 2, $pid;
 }
 
-chdir($nginx_dir);
+chdir("$home/$nginx_dir");
 
-unless (-f "$FindBin::Bin/$nginx_dir/Makefile") {
+unless (-f "$home/$nginx_dir/Makefile") {
 
     # minimalistic build
     my $config_opts = <<END;
@@ -74,13 +75,13 @@ unless (-f "$FindBin::Bin/$nginx_dir/Makefile") {
 --without-http_upstream_ip_hash_module
 
 --conf-path="$tmp_conf"
---error-log-path="$FindBin::Bin/log/error.log"
---http-client-body-temp-path="$FindBin::Bin/tmp/body"
---http-log-path="$FindBin::Bin/log/access.log"
---lock-path="$FindBin::Bin/tmp/nginx.lock"
+--error-log-path="$home/log/error.log"
+--http-client-body-temp-path="$home/tmp/body"
+--http-log-path="$home/log/access.log"
+--lock-path="$home/tmp/nginx.lock"
 --pid-path="$pidfile"
 --with-debug
---add-module="$FindBin::Bin"
+--add-module="$home"
 END
 
     $config_opts =~ s/\n/ /g;
@@ -88,10 +89,27 @@ END
     system("./configure $config_opts") and die "Configure failed\n";
 }
 
-`rm $FindBin::Bin/log/*`;
-system("make")       and die "make filed\n";
+`rm $home/log/* > /dev/null`;
+system("make > $home/tmp/make.log") and die "make filed. see '$home/tmp/make.log for details\n";
 system("objs/nginx") and die "nginx failed to start\n";
 
-print "\nSending simple request with body 'Client request body'\nAnswer:\n\n";
+print "Sending simple request with body 'Client request body'\nAnswer:\n\n";
 
-system('curl http://127.0.0.1:3000/ -d "Client request body"');
+system('curl http://127.0.0.1:3000/ -d "Client request body" -D -');
+
+print <<END;
+
+What to do now:
+
+You may want to see logs:
+
+    $home/log/access.log
+    $home/log/error.log
+    $home/log/error.local.log
+
+You also may want to edit psgi app or nginx.conf and run `eg/try` again:
+
+    $home/eg/helloworld.psgi
+    $home/tmp/nginx.conf
+
+END
