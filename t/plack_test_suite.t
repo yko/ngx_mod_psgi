@@ -2,6 +2,7 @@ use strict;
 use warnings;
 use Plack::Test::Suite;
 use FindBin;
+use Test::More;
 use Cwd 'abs_path';
 
 my $nginx     = 'http://nginx.org/download/nginx-1.0.4.tar.gz';
@@ -50,5 +51,3 @@ sub run_httpd {
         unlink $tmp_conf;
     };
 }
-
-
