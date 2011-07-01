@@ -386,8 +386,12 @@ ngx_http_psgi_process_response(ngx_http_request_t *r, SV *response, PerlInterpre
             "PSGI app returned %d body chunks", len);
 
     ngx_chain_t   *first_chain = NULL;
-    ngx_chain_t   *last_chain = NULL;
-    ngx_buf_t    *last_buffer = NULL;
+    ngx_chain_t   *last_chain  = NULL;
+    ngx_buf_t     *last_buffer = NULL;
+
+    if (len < 0) {
+        return NGX_DONE;
+    }
 
     for (i = 0; i <= len; i++) {
         u_char              *p;
@@ -427,6 +431,7 @@ ngx_http_psgi_process_response(ngx_http_request_t *r, SV *response, PerlInterpre
         last_chain = out;
         last_buffer = b;
     }
+
 
     return ngx_http_output_filter(r, first_chain);
 
