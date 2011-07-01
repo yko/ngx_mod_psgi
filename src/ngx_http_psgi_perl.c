@@ -162,7 +162,6 @@ SV *ngx_http_psgi_create_env(ngx_http_request_t *r, SV *app)
             return NULL;
         }
 
-
         name.data = p;
         name.len = sizeof("HTTP_") + h[i].key.len -1 ;
 
@@ -394,37 +393,21 @@ ngx_http_psgi_process_response(ngx_http_request_t *r, SV *response, PerlInterpre
                 "PSGI app should return body as reference to something, but returned: %s",  SvPV_nolen(*body));
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
-    // Threat body as an ARRAYref
-    int len = av_len((AV*)SvRV(body[0]));
-    int i;
 
-    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-            "PSGI app returned %d body chunks", len);
+    switch (SvTYPE(SvRV(*body))) {
+        case SVt_PVAV:
+            return ngx_http_psgi_process_body_array(r, (AV*)SvRV(*body));
 
-    ngx_chain_t   *first_chain, *last_chain;
+        case SVt_PVMG:
+        case SVt_PVGV:
+            return ngx_http_psgi_process_body_glob(r, (GV*)SvRV(*body));
 
-    if (len < 0) {
-        ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                "PSGI app returned zerro-elements body");
-        return NGX_HTTP_INTERNAL_SERVER_ERROR;
-    }
+        default:
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                    "PSGI app returned body element of unsupported type: %s",  SvPV_nolen(*body));
 
-    for (i = 0; i <= len; i++) {
-        u_char              *p;
-        STRLEN               plen;
-
-        SV **body_chunk = av_fetch((AV*)SvRV(body[0]), i, 0);
-        p = (u_char *) SvPV(body_chunk[0], plen);
-
-        if (chain_buffer(r, p, plen, &first_chain, &last_chain) != NGX_OK) {
-            ngx_log_error(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                    "Error chaining psgi response buffer");
             return NGX_HTTP_INTERNAL_SERVER_ERROR;
-        }
     }
-
-    ngx_http_output_filter(r, first_chain);
-    return NGX_OK;
 }
 
 ngx_int_t
@@ -456,6 +439,112 @@ chain_buffer(ngx_http_request_t *r, u_char *p, STRLEN len, ngx_chain_t **first, 
     }
     *last = out;
 
+    return NGX_OK;
+}
+
+ngx_int_t
+ngx_http_psgi_process_body_glob(ngx_http_request_t *r, GV *body)
+{
+
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+            "PSGI app returned filehandle: %s", SvPV_nolen(newRV((SV*)body)));
+
+    ngx_chain_t   *first_chain = NULL;
+    ngx_chain_t   *last_chain  = NULL;
+    bool data = 1;
+
+    /* FIXME: This sucks. Push handle to stack and look readline, save time */
+    /* FIXME: This sucks. Do async event-based writing */
+    /* FIXME: This sucks. Readline can return lines 1-10 bytes long. Buffer data instead of chaining each line */
+    while (data) {
+        dSP;
+        ENTER;
+        SAVETMPS;
+
+        PUSHMARK(SP);
+        XPUSHs(newRV((SV*)body));
+        PUTBACK;
+
+        call_method("getline", G_SCALAR);
+
+        SPAGAIN;
+
+        SV *buffer = POPs;
+
+        if (SvTRUE(ERRSV))
+        {
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                    "Error reading from FH: %s", SvPV_nolen(ERRSV));
+            return NGX_HTTP_INTERNAL_SERVER_ERROR;
+        } else if (!SvOK(buffer)) {
+            // FIXME: This sounds wrong. I think I should check for eof
+            data = 0;
+        } else {
+            u_char              *p = NULL;
+            STRLEN               len;
+            p = (u_char*)SvPV(buffer, len);
+
+            if (chain_buffer(r, p, len, &first_chain, &last_chain) != NGX_OK) {
+                ngx_log_error(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                        "Error chaining psgi response buffer");
+                return NGX_HTTP_INTERNAL_SERVER_ERROR;
+            }
+        }
+
+        PUTBACK;
+        FREETMPS;
+        LEAVE;
+    }
+
+    if (first_chain == NULL) {
+        return NGX_DONE;
+    }
+
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+            "Done reading filehandle");
+    ngx_http_output_filter(r, first_chain);
+    return NGX_OK;
+}
+
+ngx_int_t
+ngx_http_psgi_process_body_array(ngx_http_request_t *r, AV *body) {
+    // Threat body as an ARRAYref
+    int len = av_len((AV*)body);
+    int i;
+
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+            "PSGI app returned %d body chunks", len + 1);
+
+    ngx_chain_t   *first_chain = NULL, *last_chain = NULL;
+
+    if (len < 0) {
+        ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                "PSGI app returned zerro-elements body");
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    }
+
+    for (i = 0; i <= len; i++) {
+        u_char              *p;
+        STRLEN               plen;
+
+        SV **body_chunk = av_fetch(body, i, 0);
+
+        p = (u_char *) SvPV(*body_chunk, plen);
+        ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                "Chunk %s", p);
+
+        if (chain_buffer(r, p, plen, &first_chain, &last_chain) != NGX_OK) {
+            ngx_log_error(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                    "Error chaining psgi response buffer");
+            return NGX_HTTP_INTERNAL_SERVER_ERROR;
+        }
+    }
+
+    if (first_chain == NULL) {
+        return NGX_DONE;
+    }
+
+    ngx_http_output_filter(r, first_chain);
     return NGX_OK;
 }
 
