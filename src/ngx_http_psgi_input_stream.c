@@ -119,7 +119,7 @@ SV *PerlIONginxInput_newhandle(ngx_http_request_t *r)
         ngx_log_error(NGX_LOG_ERR, log, 0,
                 "Error pushing layer to FH"
                 );
-        // TODO: Throw error
+        return NULL;
     }
 
     return (SV*)newRV_inc((SV *)gv);

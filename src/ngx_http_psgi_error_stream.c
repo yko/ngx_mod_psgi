@@ -87,11 +87,10 @@ SV *PerlIONginxError_newhandle(ngx_http_request_t *r)
 
     } else {
         ngx_log_error(NGX_LOG_ERR, log, 0,
-                "Error pushing layer to FH"
+                "Error pushing NginxError layer to FH"
                 );
-        // TODO: Throw error
+        return NULL;
     }
 
-    SV *sv = newRV_inc((SV *)gv);
-    return (SV*)sv;
+    return newRV_inc((SV *)gv);
 }

@@ -22,8 +22,15 @@ SV *ngx_http_psgi_create_env(ngx_http_request_t *r, SV *app)
     hv_store(env, "psgi.version", sizeof("psgi.version")-1, newRV_inc((SV*)version), 0);
 
     /* FIXME: after any of this two operations $! is set to 'Inappropriate ioctl for device' */
-    hv_store(env, "psgi.errors", sizeof("psgi.errors")-1, PerlIONginxError_newhandle(r), 0);
-    hv_store(env, "psgi.input", sizeof("psgi.input")-1, PerlIONginxInput_newhandle(r), 0);
+    SV *errors_h = PerlIONginxError_newhandle(r);
+    if (errors_h == NULL)
+        return NULL;
+    hv_store(env, "psgi.errors", sizeof("psgi.errors")-1, errors_h, 0);
+
+    SV *input_h = PerlIONginxInput_newhandle(r);
+    if (input_h == NULL)
+        return NULL;
+    hv_store(env, "psgi.input", sizeof("psgi.input")-1, input_h, 0);
 
     /* Detect scheme.
      * TODO: Check if only http and https schemes allowed here. What about ws and others?
@@ -234,16 +241,20 @@ ngx_http_psgi_perl_handler(ngx_http_request_t *r, ngx_http_psgi_loc_conf_t *psgi
             ngx_log_error(NGX_LOG_ERR, log, 0,
                     "PSGI handler execution failed: %s", SvPV_nolen(ERRSV));
 
-            POPs;
+            ngx_http_finalize_request(r, NGX_HTTP_INTERNAL_SERVER_ERROR);
+            retval = NGX_ERROR;
         }
         else if (count < 1) {
             ngx_log_error(NGX_LOG_ERR, log, 0,
                     "PSGI app \"%V\" did not returned value", psgilcf->app, SvPV_nolen(ERRSV));
+            ngx_http_finalize_request(r, NGX_HTTP_INTERNAL_SERVER_ERROR);
+            retval = NGX_ERROR;
         } else {
             ngx_log_debug1(NGX_LOG_DEBUG_HTTP, log, 0,
                     "Processing PSGI app response, %d elements", count);
 
             retval = ngx_http_psgi_process_response(r, POPs, perl);
+            ngx_http_finalize_request(r, retval);
         }
 
         PUTBACK;
@@ -333,7 +344,7 @@ ngx_http_psgi_process_response(ngx_http_request_t *r, SV *response, PerlInterpre
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                 "PSGI app returned wrong value: %s",  SvPV_nolen(response));
 
-        return NGX_ERROR;
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
 
     /* Create chained response from ARRAY:
@@ -349,7 +360,7 @@ ngx_http_psgi_process_response(ngx_http_request_t *r, SV *response, PerlInterpre
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                 "PSGI app returned array with wrong length: %d",  av_len(psgir));
 
-        return NGX_ERROR;
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
 
     // Process HTTP status code
@@ -361,10 +372,10 @@ ngx_http_psgi_process_response(ngx_http_request_t *r, SV *response, PerlInterpre
     // Process headers
     SV **headers = av_fetch(psgir, 1, 0);
 
-    if (ngx_http_psgi_process_headers(r, headers[0], http_status[0]) == NGX_ERROR) {
+    if (ngx_http_psgi_process_headers(r, headers[0], http_status[0]) != NGX_OK) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                 "Failed to process PSGI response headers");
-        return NGX_ERROR;
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
 
     // Process body
@@ -378,6 +389,11 @@ ngx_http_psgi_process_response(ngx_http_request_t *r, SV *response, PerlInterpre
 
     SV **body = av_fetch(psgir, 2, 0);
 
+    if (!SvROK(*body)) {
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                "PSGI app should return body as reference to something, but returned: %s",  SvPV_nolen(*body));
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    }
     // Threat body as an ARRAYref
     int len = av_len((AV*)SvRV(body[0]));
     int i;
@@ -390,7 +406,9 @@ ngx_http_psgi_process_response(ngx_http_request_t *r, SV *response, PerlInterpre
     ngx_buf_t     *last_buffer = NULL;
 
     if (len < 0) {
-        return NGX_DONE;
+        ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                "PSGI app returned zerro-elements body");
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
 
     for (i = 0; i <= len; i++) {
@@ -400,7 +418,7 @@ ngx_http_psgi_process_response(ngx_http_request_t *r, SV *response, PerlInterpre
         ngx_chain_t *out;
         out = ngx_alloc_chain_link(r->pool);
         if (out == NULL)
-            return NGX_ERROR;
+            return NGX_HTTP_INTERNAL_SERVER_ERROR;
 
         SV **body_chunk = av_fetch((AV*)SvRV(body[0]), i, 0);
         b = ngx_pcalloc(r->pool, sizeof(ngx_buf_t));
@@ -432,9 +450,8 @@ ngx_http_psgi_process_response(ngx_http_request_t *r, SV *response, PerlInterpre
         last_buffer = b;
     }
 
-
-    return ngx_http_output_filter(r, first_chain);
-
+    ngx_http_output_filter(r, first_chain);
+    return NGX_OK;
 }
 
 ngx_int_t
@@ -588,7 +605,7 @@ ngx_http_psgi_process_headers(ngx_http_request_t *r, SV *headers, SV *status)
     }
 
     ngx_http_send_header(r);
-    return NGX_DONE;
+    return NGX_OK;
 }
 
 ngx_int_t
