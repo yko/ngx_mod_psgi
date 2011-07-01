@@ -98,28 +98,47 @@ SV *PerlIONginxInput_newhandle(ngx_http_request_t *r)
     ngx_log_t *log = r->connection->log;
 
     PerlIO *f;
-    IO* io;
-    GV *gv;
-
-    f = PerlIO_tmpfile(aTHX);
-    gv = (GV*)SvREFCNT_inc(newGVgen("Nginx::PSGI::input"));
-    io = GvIOn(gv);
+    GV *gv = (GV*)SvREFCNT_inc(newGVgen("Nginx::PSGI::input"));
+    IO *io = GvIOn(gv);
 
     if (gv)
         (void) hv_delete(GvSTASH(gv), GvNAME(gv), GvNAMELEN(gv), G_DISCARD);
+    if (r->request_body == NULL || r->request_body->temp_file == NULL) {
+        ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                "Open filehandle with layer to read from buffers");
 
-    // Apply layer
-    if ( (f = PerlIO_push(aTHX_ f, PERLIO_FUNCS_CAST(&PerlIO_nginx_input), NULL, NULL)) ) {
-        PerlIONginxInput *st = PerlIOSelf(f, PerlIONginxInput);
-        st->r = r;
-        IoIFP(io) = f;
+        f = PerlIO_tmpfile(aTHX); // TODO: Replace this
         PerlIOBase(f)->flags = PERLIO_F_CANREAD | PERLIO_F_OPEN;
+
+        IoIFP(io) = f;
         IoTYPE(io) = IoTYPE_RDONLY;
+
+        // Apply layer
+        if ( (f = PerlIO_push(aTHX_ f, PERLIO_FUNCS_CAST(&PerlIO_nginx_input), NULL, NULL)) ) {
+            PerlIONginxInput *st = PerlIOSelf(f, PerlIONginxInput);
+            st->r = r;
+        } else {
+            ngx_log_error(NGX_LOG_ERR, log, 0,
+                    "Error pushing layer to FH"
+                    );
+            return NULL;
+        }
+
     } else {
-        ngx_log_error(NGX_LOG_ERR, log, 0,
-                "Error pushing layer to FH"
-                );
-        return NULL;
+
+        ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                "Open PSGI request body temp file '%s'", r->request_body->temp_file->file.name.data);
+        bool result = do_open(gv,(char*)r->request_body->temp_file->file.name.data, r->request_body->temp_file->file.name.len,FALSE,O_RDONLY,0,NULL);
+
+        if (!result) {
+            ngx_log_error(NGX_LOG_ERR, log, 0,
+                    "Error opening file"
+                    );
+            return NULL;
+
+        }
+        ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                "Temp file opened");
     }
 
     return (SV*)newRV_inc((SV *)gv);

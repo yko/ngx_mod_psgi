@@ -49,6 +49,11 @@ SV *ngx_http_psgi_create_env(ngx_http_request_t *r, SV *app)
     hv_store(env, "psgi.url_scheme", sizeof("psgi.url_scheme")-1, newSVpv("http", 0), 0);
 #endif
 
+    // Buffered body in file
+    if (r->request_body != NULL && r->request_body->temp_file != NULL) {
+        hv_store(env, "psgix.input.buffered", sizeof("psgix.input.buffered")-1, newSViv(1), 0);
+    }
+
     /* port defined in first line of request and parsed by nginx */
     if (r->port_start) {
         STRLEN port_len = r->port_end - r->port_start;
