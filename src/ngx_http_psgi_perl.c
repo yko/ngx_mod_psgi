@@ -15,42 +15,127 @@ SV *ngx_http_psgi_create_env(ngx_http_request_t *r, SV *app)
 
     HV* env = newHV();
 
-    // PSGI version 1.0, arrayref [1,0]
+    /* PSGI version 1.0, arrayref [1,0] */
     _version[0] = newSViv(1);
     _version[1] = newSViv(0);
     version = av_make(2, _version);
-
-
     hv_store(env, "psgi.version", sizeof("psgi.version")-1, newRV_inc((SV*)version), 0);
-    // FIXME: pass right url_scheme
-    hv_store(env, "psgi.url_scheme", sizeof("psgi.url_scheme")-1, newSVpv("http", 0), 0);
 
     /* FIXME: after any of this two operations $! is set to 'Inappropriate ioctl for device' */
     hv_store(env, "psgi.errors", sizeof("psgi.errors")-1, PerlIONginxError_newhandle(r), 0);
     hv_store(env, "psgi.input", sizeof("psgi.input")-1, PerlIONginxInput_newhandle(r), 0);
 
+    /* Detect scheme.
+     * TODO: Check if only http and https schemes allowed here. What about ws and others?
+     * FIXME: mb nginx should parse scheme in safe way: [a-z][a-z0-9\=\0\.]* allowed to be valid scheme (rfc3986)
+     * but nginx allows only [a-z]+
+     */
+#if (NGX_HTTP_SSL)
+    char *scheme;
+    if (r->connection->ssl) {
+        scheme = "https";
+    } else {
+        scheme = "http";
+    }
+    hv_store(env, "psgi.url_scheme", sizeof("psgi.url_scheme")-1, newSVpv(scheme, 0), 0);
+#else
+    hv_store(env, "psgi.url_scheme", sizeof("psgi.url_scheme")-1, newSVpv("http", 0), 0);
+#endif
+
+    /* port defined in first line of request and parsed by nginx */
+    if (r->port_start) {
+        STRLEN port_len = r->port_end - r->port_start;
+        hv_store(env, "SERVER_PORT", sizeof("SERVER_PORT")-1, newSVpv((char *)r->port_start, port_len), 0);
+    } else {
+        /* copypasted from ngx_http_variables.c: get port fron nginx conf  */
+        /* TODO: Maybe reuse code from ngx_http_variables.c is a good idea? */
+        ngx_uint_t            port;
+        struct sockaddr_in   *sin;
+#if (NGX_HAVE_INET6)
+        struct sockaddr_in6  *sin6;
+#endif
+        u_char *strport;
+
+        if (ngx_connection_local_sockaddr(r->connection, NULL, 0) != NGX_OK) {
+            // TODO: Throw error
+            return NULL;
+        }
+
+        strport = ngx_pnalloc(r->pool, sizeof("65535") - 1);
+        if (strport == NULL) {
+            return NULL;
+        }
+
+        switch (r->connection->local_sockaddr->sa_family) {
+
+#if (NGX_HAVE_INET6)
+            case AF_INET6:
+                sin6 = (struct sockaddr_in6 *) r->connection->local_sockaddr;
+                port = ntohs(sin6->sin6_port);
+                break;
+#endif
+
+            default: /* AF_INET */
+                sin = (struct sockaddr_in *) r->connection->local_sockaddr;
+                port = ntohs(sin->sin_port);
+                break;
+        }
+
+        if (port > 0 && port < 65536) {
+            hv_store(env, "SERVER_PORT", sizeof("SERVER_PORT")-1, newSVuv(port), 0);
+        } else {
+            hv_store(env, "SERVER_PORT", sizeof("SERVER_PORT")-1, newSVpv("", 0), 0);
+        }
+    }
+    hv_store(env, "SERVER_PROTOCOL", sizeof("SERVER_PROTOCOL")-1, newSVpv((char *)r->http_protocol.data, r->http_protocol.len), 0);
+
+    if (r->headers_in.content_length_n != -1) {
+        hv_store(env, "CONTENT_LENGTH", sizeof("CONTENT_LENGTH")-1, newSViv(r->headers_in.content_length_n), 0);
+    }
+
+    if (r->headers_in.content_type != NULL) {
+        hv_store(env, "CONTENT_TYPE", sizeof("CONTENT_TYPE")-1, 
+                newSVpv((char*)r->headers_in.content_type->value.data, r->headers_in.content_type->value.len), 0);
+    }
+
+    hv_store(env, "REQUEST_URI", sizeof("REQUEST_URI")-1, newSVpv((char *)r->unparsed_uri.data, r->unparsed_uri.len), 0);
+
+    // TODO: SCRIPT_NAME should be string matched by 'location' value in nginx.conf
+    hv_store(env, "SCRIPT_NAME", sizeof("SCRIPT_NAME")-1, newSVpv("", 0), 0);
+    /* FIXME:
+     * PATH_INFO should be relative to SCRIPT_NAME (current 'location') path in nginx.conf
+     * How to achieve this? Should I allow psgi only in 'exact match' locations?
+     * It would be hard to find PATH_INFO for locations like "location ~ /(foo|bar)/.* { }". Or it wouldn't?
+     */
+    hv_store(env, "PATH_INFO", sizeof("PATH_INFO")-1, newSVpv((char *)r->uri.data, r->uri.len), 0);
     hv_store(env, "REQUEST_METHOD", sizeof("REQUEST_METHOD")-1, newSVpv((char *)r->method_name.data, r->method_name.len), 0);
-    hv_store(env, "SCRIPT_NAME", sizeof("SCRIPT_NAME")-1, app, 0);
-    hv_store(env, "QUERY_STRING", sizeof("QUERY_STRING")-1, newSVpv((char *)r->args.data, r->args.len), 0);
-    // FIXME: Send real hostname
-    hv_store(env, "SERVER_NAME", sizeof("SERVER_NAME")-1, newSVpv("127.0.0.1", 9), 0);
+    if (r->args.len > 0) {
+        hv_store(env, "QUERY_STRING", sizeof("QUERY_STRING")-1, newSVpv((char *)r->args.data, r->args.len), 0);
+    } else {
+        hv_store(env, "QUERY_STRING", sizeof("QUERY_STRING")-1, newSVpv("", 0), 0);
+    }
+
+    if (r->host_start && r->host_end) {
+        hv_store(env, "SERVER_NAME", sizeof("SERVER_NAME")-1, newSVpv((char *)r->host_start, r->host_end - r->host_start), 0);
+    } else {
+        ngx_http_core_srv_conf_t  *cscf = ngx_http_get_module_srv_conf(r, ngx_http_core_module);
+        hv_store(env, "SERVER_NAME", sizeof("SERVER_NAME")-1, newSVpv((char *)cscf->server_name.data, cscf->server_name.len), 0);
+    }
+
     hv_store(env, "REMOTE_ADDR", sizeof("REMOTE_ADDR")-1, newSVpv((char *)r->connection->addr_text.data, r->connection->addr_text.len), 0);
     /* TODO
      *
-     * PATH_INFO
-     * REQUEST_URI
-     * SERVER PORT
-     * SERVER_NAME should be actual hostname!
-     * SERVER_PROTOCOL
      * psgi.multithread
      * psgi.multiprocess
-     * CONTENT_LENGTH
-     * CONTENT_TYPE
      */
 
     part = &r->headers_in.headers.part;
     h = part->elts;
 
+    /* TODO: If there are multiple header lines sent with the same key,
+     * the server should treat them as if they were sent in one line and combine them with ',',
+     * as in RFC 2616.
+     */
     c = 0;
     for (i = 0; /* void */ ; i++) {
         ngx_str_t  name;
@@ -70,15 +155,23 @@ SV *ngx_http_psgi_create_env(ngx_http_request_t *r, SV *app)
             return NULL;
         }
 
+
         name.data = p;
         name.len = sizeof("HTTP_") + h[i].key.len -1 ;
 
         p = ngx_copy(p, (u_char*)"HTTP_", sizeof("HTTP_")-1);
         p = ngx_copy(p, h[i].key.data, h[i].key.len );
+
+        ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                "Set env header: '%s' => '%s'",
+                h[i].key.data, h[i].value.data);
+
         x = h[i].key.len + sizeof("HTTP_");
         while (x > 0) {
             if (name.data[x] == '-') {
                 name.data[x] = '_';
+            } else {
+                name.data[x] = ngx_toupper(name.data[x]);
             }
             x--;
         }
@@ -88,6 +181,7 @@ SV *ngx_http_psgi_create_env(ngx_http_request_t *r, SV *app)
 
     return newRV_inc((SV*)env);
 }
+
 ngx_int_t
 ngx_http_psgi_perl_handler(ngx_http_request_t *r, ngx_http_psgi_loc_conf_t *psgilcf, void *interpreter)
 {
@@ -449,8 +543,7 @@ ngx_http_psgi_process_headers(ngx_http_request_t *r, SV *headers, SV *status)
                 "Even number of header-value elements: %i. Possible error.", len);
     }
 
-    for (i = 0; i <= len; i++) {
-        // FIXME WTF: something very wrong here with headers length
+    for (i = 0; i <= len; i+=2) {
         if (i + 1 > len)
             break;
 
@@ -462,11 +555,11 @@ ngx_http_psgi_process_headers(ngx_http_request_t *r, SV *headers, SV *status)
 
         if (ngx_strncasecmp(key, (u_char *)"CONTENT-TYPE", klen) == 0) {
 
-            r->headers_out.content_type.len = vlen;
             r->headers_out.content_type.data = ngx_pnalloc(r->pool, vlen);
             if (r->headers_out.content_type.data == NULL) {
                 return NGX_ERROR;
             }
+            r->headers_out.content_type.len = vlen;
             ngx_memcpy(r->headers_out.content_type.data, value, vlen);
         } else {
             ngx_table_elt_t     *header_ent;
