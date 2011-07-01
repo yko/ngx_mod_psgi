@@ -20,4 +20,6 @@ ngx_int_t ngx_http_psgi_process_headers(ngx_http_request_t *r, SV *headers, SV *
 
 void ngx_http_psgi_perl_exit(ngx_cycle_t *cycle);
 
+ngx_int_t chain_buffer(ngx_http_request_t *r, u_char *p, STRLEN len, ngx_chain_t **first, ngx_chain_t **last);
+
 #endif

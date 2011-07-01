@@ -401,9 +401,7 @@ ngx_http_psgi_process_response(ngx_http_request_t *r, SV *response, PerlInterpre
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
             "PSGI app returned %d body chunks", len);
 
-    ngx_chain_t   *first_chain = NULL;
-    ngx_chain_t   *last_chain  = NULL;
-    ngx_buf_t     *last_buffer = NULL;
+    ngx_chain_t   *first_chain, *last_chain;
 
     if (len < 0) {
         ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
@@ -414,43 +412,50 @@ ngx_http_psgi_process_response(ngx_http_request_t *r, SV *response, PerlInterpre
     for (i = 0; i <= len; i++) {
         u_char              *p;
         STRLEN               plen;
-        ngx_buf_t    *b;
-        ngx_chain_t *out;
-        out = ngx_alloc_chain_link(r->pool);
-        if (out == NULL)
-            return NGX_HTTP_INTERNAL_SERVER_ERROR;
 
         SV **body_chunk = av_fetch((AV*)SvRV(body[0]), i, 0);
-        b = ngx_pcalloc(r->pool, sizeof(ngx_buf_t));
+        p = (u_char *) SvPV(body_chunk[0], plen);
 
-        if (b == NULL) {
-            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, 
-                    "Failed to allocate response buffer.");
+        if (chain_buffer(r, p, plen, &first_chain, &last_chain) != NGX_OK) {
+            ngx_log_error(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                    "Error chaining psgi response buffer");
             return NGX_HTTP_INTERNAL_SERVER_ERROR;
         }
-
-        p = (u_char *) SvPV(body_chunk[0], plen);
-        b->pos = b->start = ngx_pnalloc(r->pool, plen);
-        ngx_memcpy(b->start, p, plen);
-        b->end = b->last = b->start + plen;
-        b->memory = 1;
-        b->last_buf = 1;
-
-        out->buf = b;
-        out->next = NULL;
-
-        if (first_chain == NULL) {
-            first_chain = out;
-        }
-        if (last_chain != NULL) {
-            last_chain->buf->last_buf = 0;
-            last_chain->next = out;
-        }
-        last_chain = out;
-        last_buffer = b;
     }
 
     ngx_http_output_filter(r, first_chain);
+    return NGX_OK;
+}
+
+ngx_int_t
+chain_buffer(ngx_http_request_t *r, u_char *p, STRLEN len, ngx_chain_t **first, ngx_chain_t **last)
+{
+    ngx_chain_t *out = ngx_alloc_chain_link(r->pool);
+    if (out == NULL)
+        return NGX_ERROR;
+
+    ngx_buf_t    *b = ngx_calloc_buf(r->pool);
+    if (b == NULL)
+        return NGX_ERROR;
+
+    b->pos = b->start = ngx_palloc(r->pool, len);
+    ngx_memcpy(b->pos, p, len);
+    b->end = b->last = b->start + len;
+    b->memory = 1;
+    b->last_buf = 1;
+
+    out->buf = b;
+    out->next = NULL;
+
+    if (*first == NULL) {
+        *first = out;
+    }
+    if (*last != NULL) {
+        (*last)->buf->last_buf = 0;
+        (*last)->next = out;
+    }
+    *last = out;
+
     return NGX_OK;
 }
 
