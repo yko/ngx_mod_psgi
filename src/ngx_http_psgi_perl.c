@@ -144,10 +144,6 @@ SV *ngx_http_psgi_create_env(ngx_http_request_t *r, SV *app)
     part = &r->headers_in.headers.part;
     h = part->elts;
 
-    /* TODO: If there are multiple header lines sent with the same key,
-     * the server should treat them as if they were sent in one line and combine them with ',',
-     * as in RFC 2616.
-     */
     c = 0;
     for (i = 0; /* void */ ; i++) {
         ngx_str_t  name;
@@ -186,7 +182,14 @@ SV *ngx_http_psgi_create_env(ngx_http_request_t *r, SV *app)
             }
             x--;
         }
-        hv_store(env, (char *)name.data, sizeof("HTTP_") + h[i].key.len - 1, newSVpv((char *)h[i].value.data, h[i].value.len), 0);
+        SV **exists = hv_fetch(env, (char*)name.data, name.len, 0);
+        if (exists == NULL) {
+            hv_store(env, (char *)name.data, name.len, newSVpv((char *)h[i].value.data, h[i].value.len), 0);
+        } else {
+            // join ',', @values;
+            SV *newval = newSVpvf("%s,%s", SvPV_nolen(*exists), h[i].value.data);
+            hv_store(env, (char *)name.data, name.len, newval, 0);
+        }
         c += 2;
     }
 
