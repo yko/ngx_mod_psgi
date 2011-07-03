@@ -318,16 +318,27 @@ ngx_http_psgi_init_app(ngx_http_psgi_loc_conf_t *psgilcf, ngx_log_t *log)
             ngx_log_error(NGX_LOG_ERR, log, 0,
                     "Application '%s' returned empty list", psgilcf->app);
         } else {
-            // TODO: Check if returned value isa coderef
-            //
             SPAGAIN;
-            psgilcf->sub =  newRV_inc((SV*)POPi);
-
-            ngx_log_debug1(NGX_LOG_DEBUG_HTTP, log, 0,
-                    "Application successfully initialized: %s", SvPV_nolen(psgilcf->sub));
-
-            retval = NGX_OK;
+            psgilcf->sub =  (SV*)POPs;
             PUTBACK;
+
+            // Dereference
+            if (SvROK(psgilcf->sub)) {
+                psgilcf->sub = SvRV(psgilcf->sub);
+            } 
+
+            if (SvTYPE(psgilcf->sub) == SVt_PVCV || SvTYPE(psgilcf->sub) == SVt_PVMG) {
+                SvREFCNT_inc(psgilcf->sub);
+
+                ngx_log_debug1(NGX_LOG_DEBUG_HTTP, log, 0,
+                        "Application successfully initialized: %s", SvPV_nolen(psgilcf->sub));
+                retval = NGX_OK;
+            } else {
+
+                ngx_log_error(NGX_LOG_ERR, log, 0,
+                        "psgi app \"%s\" returned something that is not a code reference: '%s'",
+                        SvPV_nolen(psgilcf->app), SvPV_nolen(psgilcf->sub));
+            }
         }
 
         FREETMPS;
