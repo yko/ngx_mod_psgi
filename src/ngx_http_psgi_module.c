@@ -12,7 +12,7 @@ ngx_command_t  ngx_http_psgi_commands[] = {
     ngx_null_command
 };
 
-ngx_http_module_t     ngx_http_psgi_ctx = {
+ngx_http_module_t     ngx_http_psgi_module_ctx = {
     NULL,                                  /* preconfiguration */
     NULL,                                  /* postconfiguration */
 
@@ -28,7 +28,7 @@ ngx_http_module_t     ngx_http_psgi_ctx = {
 
 ngx_module_t          ngx_http_psgi_module = {
     NGX_MODULE_V1,
-    &ngx_http_psgi_ctx,                     // module context
+    &ngx_http_psgi_module_ctx,              // module context
     ngx_http_psgi_commands,                 // module directives
     NGX_HTTP_MODULE,                        // module type
     NULL,                                   // init master
