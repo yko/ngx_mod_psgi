@@ -32,7 +32,7 @@ sub run_httpd {
         my $conf_body = do { open my $CNF, '<', $conf_template; <$CNF> };
 
         $conf_body
-            =~ s#^\s*error_log\s+.*#error_log "$home/log/error.local.log" debug;#;
+        =~ s#(\n\s*error_log\s+).*#$1"$home/log/error.local.log" debug;#;
         $conf_body =~ s#(\n\s*psgi)\s+.*#$1 "$home/eg/plack_test_suite.psgi";#;
         $conf_body =~ s#127\.0\.0\.1:\d+#127.0.0.1:$port#g;
 
