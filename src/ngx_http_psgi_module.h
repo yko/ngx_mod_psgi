@@ -24,7 +24,16 @@ typedef struct {
     PerlInterpreter   *perl;
 } ngx_http_psgi_loc_conf_t;
 
-
+typedef struct {
+    SV                       *app;
+    SV                       *env;
+    SV                       *input;
+    SV                       *errors;
+    SV                       *callback;
+    SV                       *responder;
+    SV                       *writer;
+    PerlInterpreter          *perl;
+} ngx_http_psgi_ctx_t;
 
 void *ngx_http_psgi_create_main_conf(ngx_conf_t *cf);
 char *ngx_http_psgi_init_main_conf(ngx_conf_t *cf, void *conf);

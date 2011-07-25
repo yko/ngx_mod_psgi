@@ -10,6 +10,18 @@ ngx_http_psgi_process_response(ngx_http_request_t *r, SV *response, PerlInterpre
     if (SvROK(response))
         response = SvRV(response);
 
+    if (SvTYPE(response) == SVt_PVCV || SvTYPE(response) == SVt_PVMG) {
+        ngx_http_psgi_ctx_t *ctx = ngx_http_get_module_ctx(r, ngx_http_psgi_module);
+        if (ctx == NULL) {
+            ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0,
+                    "PSGI panic: no psgi context found while processing response");
+            return NGX_ERROR;
+        }
+        ctx->callback = response;
+        SvREFCNT_inc(ctx->callback);
+        return ngx_http_psgi_perl_call_psgi_callback(r);
+    }
+
     dTHXa(perl);
     PERL_SET_CONTEXT(perl);
 
@@ -30,10 +42,14 @@ ngx_http_psgi_process_response(ngx_http_request_t *r, SV *response, PerlInterpre
 
     // Array should contain at least 3 elements
     if (av_len(psgir) < 2) {
-        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                "PSGI app returned array with wrong length: %d",  av_len(psgir));
+        ngx_http_psgi_ctx_t *ctx = ngx_http_get_module_ctx(r, ngx_http_psgi_module);
+        if (!ctx->callback || av_len(psgir) < 1) {
 
-        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                    "PSGI app returned array with wrong length: %d",  av_len(psgir));
+
+            return NGX_HTTP_INTERNAL_SERVER_ERROR;
+        }
     }
 
     // Process HTTP status code
