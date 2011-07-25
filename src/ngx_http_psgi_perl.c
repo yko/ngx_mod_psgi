@@ -383,19 +383,25 @@ ngx_http_psgi_process_response(ngx_http_request_t *r, SV *response, PerlInterpre
 
     // Process HTTP status code
     SV **http_status = av_fetch(psgir, 0, 0);
-
+    ngx_int_t status =  SvIV(*http_status);
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
             "PSGI app returned status code: %d",  SvIV(http_status[0]));
 
     // Process headers
     SV **headers = av_fetch(psgir, 1, 0);
 
-    if (ngx_http_psgi_process_headers(r, headers[0], http_status[0]) != NGX_OK) {
+    if (ngx_http_psgi_process_headers(r, *headers, status) != NGX_OK) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                 "Failed to process PSGI response headers");
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
 
+    if (r->headers_out.content_length_n == 0) {
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                "PSGI app returned zerro content-length");
+        ngx_http_send_special(r, NGX_HTTP_LAST);
+        return NGX_OK;
+    }
     // Process body
 
     // TODO: According to PSGI spec body can be IO::Handle
@@ -549,8 +555,8 @@ ngx_http_psgi_process_body_array(ngx_http_request_t *r, AV *body) {
         SV **body_chunk = av_fetch(body, i, 0);
 
         p = (u_char *) SvPV(*body_chunk, plen);
-        ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                "Chunk %s", p);
+        ngx_log_debug8(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                "Chunk [%d]: '%s'", plen, p);
 
         if (chain_buffer(r, p, plen, &first_chain, &last_chain) != NGX_OK) {
             ngx_log_error(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
@@ -652,15 +658,15 @@ fail:
 }
 
 ngx_int_t
-ngx_http_psgi_process_headers(ngx_http_request_t *r, SV *headers, SV *status)
+ngx_http_psgi_process_headers(ngx_http_request_t *r, SV *headers, ngx_int_t status)
 {
 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
             "process headers");
+    AV *h = (AV *)SvRV(headers);
 
-    if (r->headers_out.status == 0) {
-        r->headers_out.status = SvIV(status);
-    }
+    int len = av_len(h);
+    int i;
 
     if (!SvROK(headers) || SvTYPE(SvRV(headers)) != SVt_PVAV) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
@@ -668,10 +674,10 @@ ngx_http_psgi_process_headers(ngx_http_request_t *r, SV *headers, SV *status)
         return NGX_ERROR;
     }
 
-    AV *h = (AV *)SvRV(headers);
-
-    int len = av_len(h);
-    int i;
+    // Set HTTP status code
+    if (r->headers_out.status == 0) {
+        r->headers_out.status = status;
+    }
 
     if (!(len % 2)) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
@@ -688,34 +694,47 @@ ngx_http_psgi_process_headers(ngx_http_request_t *r, SV *headers, SV *status)
         key = (u_char *) SvPV(header[0], klen);
         value = (u_char *) SvPV(header[1], vlen);
 
-        if (ngx_strncasecmp(key, (u_char *)"CONTENT-TYPE", klen) == 0) {
+        ngx_log_debug4(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                "Setting header: '%s' => '%s'",
+                key, value);
 
+        ngx_table_elt_t     *header_ent;
+
+        header_ent = ngx_list_push(&r->headers_out.headers);
+
+        if (header_ent == NULL) {
+            return NGX_ERROR;
+        }
+        header_ent->hash = 1;
+
+        if (ngx_sv2str(r, &header_ent->key, key, klen) != NGX_OK) {
+            return NGX_ERROR;
+        }
+
+        if (ngx_sv2str(r, &header_ent->value, value, vlen) != NGX_OK) {
+            return NGX_ERROR;
+        }
+
+        if (sizeof("CONENT-TYPE") - 1 == klen &&
+                ngx_strncasecmp(key, (u_char *)"CONTENT-TYPE", klen) == 0)
+        {
             r->headers_out.content_type.data = ngx_pnalloc(r->pool, vlen);
             if (r->headers_out.content_type.data == NULL) {
                 return NGX_ERROR;
             }
             r->headers_out.content_type.len = vlen;
             ngx_memcpy(r->headers_out.content_type.data, value, vlen);
-        } else {
-            ngx_table_elt_t     *header_ent;
-
-            header_ent = ngx_list_push(&r->headers_out.headers);
-
-            header_ent->hash = 1;
-            if (header_ent == NULL) {
-                return NGX_ERROR;
-            }
-
-            if (ngx_sv2str(r, &header_ent->key, key, klen) != NGX_OK) {
-                return NGX_ERROR;
-            }
-
-            if (ngx_sv2str(r, &header_ent->value, value, vlen) != NGX_OK) {
-                return NGX_ERROR;
-            }
         }
 
+        if (sizeof("CONTENT-LENGTH") - 1 == klen &&
+                ngx_strncasecmp(key, (u_char *) "CONTENT-LENGTH", klen) == 0)
+        {
+            r->headers_out.content_length_n = (off_t) SvIV(header[1]);
+            r->headers_out.content_length = header_ent;
+        }
     }
+    ngx_log_debug4(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+            "Content-Length: '%d'", r->headers_out.content_length_n);
 
     ngx_http_send_header(r);
     return NGX_OK;

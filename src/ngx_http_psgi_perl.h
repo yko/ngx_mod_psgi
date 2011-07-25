@@ -16,7 +16,7 @@ ngx_int_t ngx_http_psgi_perl_handler(ngx_http_request_t *r, ngx_http_psgi_loc_co
 
 ngx_int_t ngx_sv2str(ngx_http_request_t *r, ngx_str_t *dst, u_char* src, int len);
 ngx_int_t ngx_http_psgi_process_response(ngx_http_request_t *r, SV *response, PerlInterpreter *perl);
-ngx_int_t ngx_http_psgi_process_headers(ngx_http_request_t *r, SV *headers, SV *status);
+ngx_int_t ngx_http_psgi_process_headers(ngx_http_request_t *r, SV *headers, ngx_int_t status);
 
 void ngx_http_psgi_perl_exit(ngx_cycle_t *cycle);
 
