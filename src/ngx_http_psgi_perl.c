@@ -55,12 +55,12 @@ SV *ngx_http_psgi_create_env(ngx_http_request_t *r, SV *app)
         hv_store(env, "psgix.input.buffered", sizeof("psgix.input.buffered")-1, newSViv(1), 0);
     }
 
-    /* port defined in first line of request and parsed by nginx */
+    /* port defined in first line of HTTP request and parsed by nginx */
     if (r->port_start) {
         STRLEN port_len = r->port_end - r->port_start;
         hv_store(env, "SERVER_PORT", sizeof("SERVER_PORT")-1, newSVpv((char *)r->port_start, port_len), 0);
     } else {
-        /* copypasted from ngx_http_variables.c: get port fron nginx conf  */
+        /* copypasted from ngx_http_variables.c: get port from nginx conf  */
         /* TODO: Maybe reuse code from ngx_http_variables.c is a good idea? */
         ngx_uint_t            port;
         struct sockaddr_in   *sin;
@@ -113,8 +113,9 @@ SV *ngx_http_psgi_create_env(ngx_http_request_t *r, SV *app)
 
     hv_store(env, "REQUEST_URI", sizeof("REQUEST_URI")-1, newSVpv((char *)r->unparsed_uri.data, r->unparsed_uri.len), 0);
 
-    // TODO: SCRIPT_NAME should be string matched by 'location' value in nginx.conf
+    /* TODO: SCRIPT_NAME should be string matched by 'location' value in nginx.conf */
     hv_store(env, "SCRIPT_NAME", sizeof("SCRIPT_NAME")-1, newSVpv("", 0), 0);
+
     /* FIXME:
      * PATH_INFO should be relative to SCRIPT_NAME (current 'location') path in nginx.conf
      * How to achieve this? Should I allow psgi only in 'exact match' locations?
@@ -170,7 +171,7 @@ SV *ngx_http_psgi_create_env(ngx_http_request_t *r, SV *app)
         p = ngx_copy(p, (u_char*)"HTTP_", sizeof("HTTP_")-1);
         p = ngx_copy(p, h[i].key.data, h[i].key.len );
 
-        ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+        ngx_log_debug7(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                 "Set env header: '%s' => '%s'",
                 h[i].key.data, h[i].value.data);
 
@@ -187,7 +188,9 @@ SV *ngx_http_psgi_create_env(ngx_http_request_t *r, SV *app)
         if (exists == NULL) {
             hv_store(env, (char *)name.data, name.len, newSVpv((char *)h[i].value.data, h[i].value.len), 0);
         } else {
-            // join ',', @values;
+            /* join ',', @values;
+             * FIXME: Can I do this better
+             */
             SV *newval = newSVpvf("%s,%s", SvPV_nolen(*exists), h[i].value.data);
             hv_store(env, (char *)name.data, name.len, newval, 0);
         }
@@ -206,16 +209,12 @@ ngx_http_psgi_perl_handler(ngx_http_request_t *r, ngx_http_psgi_loc_conf_t *psgi
 
     if (psgilcf->sub == NULL) {
 
-        ngx_log_debug1(NGX_LOG_DEBUG_HTTP, log, 0,
-                "Loading PSGI app \"%s\"",
-                SvPV_nolen(psgilcf->app));
-
         if(ngx_http_psgi_init_app(psgilcf, log) != NGX_OK) {
             return NGX_ERROR;
         }
     }
 
-    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, log, 0,
+    ngx_log_debug5(NGX_LOG_DEBUG_HTTP, log, 0,
             "Running PSGI app \"%s\"",
             SvPV_nolen(psgilcf->app));
 
@@ -239,7 +238,7 @@ ngx_http_psgi_perl_handler(ngx_http_request_t *r, ngx_http_psgi_loc_conf_t *psgi
 
         count = call_sv(psgilcf->sub, G_EVAL|G_SCALAR);
 
-        ngx_log_debug1(NGX_LOG_DEBUG_HTTP, log, 0,
+        ngx_log_debug7(NGX_LOG_DEBUG_HTTP, log, 0,
                 "PSGI app response: %d elements", count);
 
         SPAGAIN;
@@ -258,9 +257,6 @@ ngx_http_psgi_perl_handler(ngx_http_request_t *r, ngx_http_psgi_loc_conf_t *psgi
             ngx_http_finalize_request(r, NGX_HTTP_INTERNAL_SERVER_ERROR);
             retval = NGX_ERROR;
         } else {
-            ngx_log_debug1(NGX_LOG_DEBUG_HTTP, log, 0,
-                    "Processing PSGI app response, %d elements", count);
-
             retval = ngx_http_psgi_process_response(r, POPs, perl);
             ngx_http_finalize_request(r, retval);
         }
@@ -277,22 +273,22 @@ ngx_http_psgi_init_app(ngx_http_psgi_loc_conf_t *psgilcf, ngx_log_t *log)
 {
     ngx_int_t retval = NGX_ERROR;
 
-    // Check if we have Perl interpreter
+    /* Check if we have Perl interpreter */
     if (psgilcf->perl == NULL) {
         ngx_log_error(NGX_LOG_ERR, log, 0,
                 "Panic: NULL Perl interpreter");
         return retval;
     }
 
-    // Already have PSGI app
+    /* Already have PSGI app */
     if (psgilcf->sub != NULL) {
         return NGX_OK;
     }
 
-    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, log, 0,
+    ngx_log_debug5(NGX_LOG_DEBUG_HTTP, log, 0,
             "Loading app \"%s\"", SvPV_nolen(psgilcf->app));
 
-    // Try to init PSGI application
+    /* Init PSGI application */
     {
         dTHXa(psgilcf->perl);
         PERL_SET_CONTEXT(psgilcf->perl);
@@ -305,6 +301,7 @@ ngx_http_psgi_init_app(ngx_http_psgi_loc_conf_t *psgilcf, ngx_log_t *log)
 
         PUSHMARK(SP);
 
+        /* FIXME: This should be written way cleaner! */
         SV *call = newSVpvf(aTHX_ "sub { return do '%s' }", SvPV_nolen(psgilcf->app));
 
         SV *cvrv = eval_pv(SvPV_nolen(call), FALSE);
@@ -323,15 +320,15 @@ ngx_http_psgi_init_app(ngx_http_psgi_loc_conf_t *psgilcf, ngx_log_t *log)
             psgilcf->sub =  (SV*)POPs;
             PUTBACK;
 
-            // Dereference
+            /* Dereference */
             if (SvROK(psgilcf->sub)) {
                 psgilcf->sub = SvRV(psgilcf->sub);
-            } 
+            }
 
             if (SvTYPE(psgilcf->sub) == SVt_PVCV || SvTYPE(psgilcf->sub) == SVt_PVMG) {
                 SvREFCNT_inc(psgilcf->sub);
 
-                ngx_log_debug1(NGX_LOG_DEBUG_HTTP, log, 0,
+                ngx_log_debug5(NGX_LOG_DEBUG_HTTP, log, 0,
                         "Application successfully initialized: %s", SvPV_nolen(psgilcf->sub));
                 retval = NGX_OK;
             } else {
@@ -355,7 +352,7 @@ ngx_http_psgi_perl_init_worker(ngx_cycle_t *cycle)
     ngx_http_psgi_main_conf_t  *psgimcf =
         ngx_http_cycle_get_module_main_conf(cycle, ngx_http_psgi_module);
 
-    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, cycle->log, 0,
+    ngx_log_debug5(NGX_LOG_DEBUG_HTTP, cycle->log, 0,
             "Init Perl interpreter in worker %d", ngx_pid);
 
     if (psgimcf) {
@@ -363,15 +360,20 @@ ngx_http_psgi_perl_init_worker(ngx_cycle_t *cycle)
         dTHXa(psgimcf->perl);
         PERL_SET_CONTEXT(psgimcf->perl);
 
-        /* set worker's $$ */
+        /* FIXME: It looks very wrong.
+         * Has new worker it's own Perl instance?
+         * I think I should perl_clone() or something like that
+         * Also $0 (script path) should be set somewhere.
+         * I don't think it's right place for it. It should be done somewhere in local conf init stuff
+         * Or, if many handlers share single Perl interpreter - before each handler call
+         *
+         * TODO
+         * Test PID and related stuff
+         * Test what happens if user try to change
+         * Test what happens if user does 'fork' inside PSGI app
+         */
 
-        // FIXME: It looks very wrong.
-        // Has new worker it's own Perl instance?
-        // I think I should perl_clone() or something like that
-        // Also $0 (script path) should be set somewhere.
-        // I don't think it's right place for it. It should be done somewhere in local conf init stuff
-        // Or, if many handlers share single Perl interpreter - before each handler call.
-//        sv_setiv(GvSV(gv_fetchpv("$", TRUE, SVt_PV)), (I32) ngx_pid);
+        sv_setiv(GvSV(gv_fetchpv("$$", TRUE, SVt_PV)), (I32) ngx_pid);
     } else {
         ngx_log_error(NGX_LOG_ALERT, cycle->log, 0, "PSGI panic: no main configuration supplied for init worker %d", ngx_pid);
         return NGX_ERROR;
@@ -386,10 +388,10 @@ ngx_http_psgi_create_interpreter(ngx_conf_t *cf)
     int                n;
     PerlInterpreter   *perl;
 
-    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, cf->log, 0,
+    ngx_log_debug5(NGX_LOG_DEBUG_HTTP, cf->log, 0,
             "Create PSGI Perl interpreter");
 
-    // FIXME: WTF? Some code from ngx_http_perl_module.c I don't understand
+    /* FIXME: Some code from ngx_http_perl_module.c I don't understand */
     if (ngx_set_environment(cf->cycle, NULL) == NULL) {
         return NULL;
     }
@@ -402,8 +404,6 @@ ngx_http_psgi_create_interpreter(ngx_conf_t *cf)
     }
 
     {
-        // Init very empty Perl interpreter
-        // TODO: Should I load IO::Handle here with -MIO::Handle?
         char *my_argv[] = { "", "-e", "0" };
 
         dTHXa(perl);
@@ -451,7 +451,7 @@ ngx_http_psgi_perl_exit(ngx_cycle_t *cycle)
 ngx_int_t
 ngx_http_psgi_perl_call_psgi_callback(ngx_http_request_t *r)
 {
-    // FIXME: Write actual code here
+    /* FIXME: Write actual code here */
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                     "Call PSGI callback");
 
@@ -461,4 +461,3 @@ ngx_http_psgi_perl_call_psgi_callback(ngx_http_request_t *r)
     return NGX_ERROR;
 
 }
-

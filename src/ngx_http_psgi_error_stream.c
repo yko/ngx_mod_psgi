@@ -31,7 +31,7 @@ PerlIONginxError_write(pTHX_ PerlIO * f, const void *vbuf, Size_t count)
 
 PERLIO_FUNCS_DECL(PerlIO_nginx_error) = {
     sizeof(PerlIO_funcs),
-    "nginx_error",
+    "ngx_error",
     sizeof(PerlIONginxError),
     PERLIO_K_RAW,
     PerlIOBase_pushed,
@@ -71,7 +71,7 @@ SV *PerlIONginxError_newhandle(ngx_http_request_t *r)
     IO* io;
     GV *gv;
     PerlIO *f = PerlIO_allocate(aTHX); // FIXME: RLY allocate?
-    gv = (GV*)SvREFCNT_inc(newGVgen("Nginx::PSGI::errors"));
+    gv = (GV*)SvREFCNT_inc(newGVgen("Nginx::PSGI::Error"));
 
     io = GvIOn(gv);
     if (gv)

@@ -52,7 +52,7 @@ ngx_http_psgi(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     value = cf->args->elts;
 
-    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, cf->log, 0, 
+    ngx_log_debug8(NGX_LOG_DEBUG_HTTP, cf->log, 0, 
             "Installing psgi handler \"%V\"", &value[1]);
 
     if (psgilcf->app != NULL) {
@@ -83,8 +83,10 @@ ngx_http_psgi_init_worker(ngx_cycle_t *cycle)
 {
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, cycle->log, 0, "perl term");
 
-    // TODO: Should I do here somnething nginx-related?
-    // Or just bind init_worker right to Perl land?
+    /* TODO: Should I do here something nginx-related?
+     * Or just bind init_worker right to Perl land? 
+     */
+
     return ngx_http_psgi_perl_init_worker(cycle);
 }
 
@@ -104,7 +106,7 @@ ngx_http_psgi_handler(ngx_http_request_t *r)
         r->request_body_file_log_level = 0;
     }
 
-    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+    ngx_log_debug8(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                     "Loading body for PSGI request");
 
     ngx_http_read_client_request_body(r, ngx_http_psgi_handler_with_body);
@@ -114,8 +116,6 @@ ngx_http_psgi_handler(ngx_http_request_t *r)
 
 void ngx_http_psgi_handler_with_body(ngx_http_request_t *r)
 {
-
-
     ngx_http_module_t          *ctx;
     ngx_http_psgi_main_conf_t  *psgimcf;
     ngx_http_psgi_loc_conf_t   *psgilcf;
@@ -133,10 +133,11 @@ void ngx_http_psgi_handler_with_body(ngx_http_request_t *r)
         return;
     }
 
-    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                    "Serving request with PSGI app \"%s\"", SvPV_nolen(psgilcf->app));
+    ngx_log_debug3(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                    "Serving request with PSGI app \"%s\"",
+                    SvPV_nolen(psgilcf->app));
 
-    // No local interpreter. Reuse main
+    /* No local interpreter. Reuse main */
     if (psgilcf->perl == NULL) {
         if (psgilcf->perl == NULL) {
             return;
@@ -145,7 +146,7 @@ void ngx_http_psgi_handler_with_body(ngx_http_request_t *r)
 
     ngx_http_psgi_perl_handler(r, psgilcf, psgimcf->perl);
 
-    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, log, 0, 
+    ngx_log_debug3(NGX_LOG_DEBUG_HTTP, log, 0, 
             "Finished serving request", psgilcf->app);
 }
 
@@ -154,7 +155,7 @@ ngx_http_psgi_create_main_conf(ngx_conf_t *cf)
 {
     ngx_http_psgi_main_conf_t  *pmcf;
 
-    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, cf->log, 0, 
+    ngx_log_debug8(NGX_LOG_DEBUG_HTTP, cf->log, 0, 
             "Create PSGI main conf");
 
     pmcf = ngx_pcalloc(cf->pool, sizeof(ngx_http_psgi_main_conf_t));
@@ -171,8 +172,9 @@ ngx_http_psgi_create_main_conf(ngx_conf_t *cf)
 char *
 ngx_http_psgi_init_main_conf(ngx_conf_t *cf, void *conf)
 {
-    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, cf->log, 0, 
+    ngx_log_debug8(NGX_LOG_DEBUG_HTTP, cf->log, 0, 
             "Init psgi main conf");
+
     return NGX_CONF_OK;
 }
 
@@ -187,7 +189,7 @@ ngx_http_psgi_create_loc_conf(ngx_conf_t *cf)
         return NULL;
     }
 
-    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, cf->log, 0, 
+    ngx_log_debug8(NGX_LOG_DEBUG_HTTP, cf->log, 0, 
             "create PSGI local conf");
 
     psgilcf->sub = NULL;
@@ -201,10 +203,7 @@ ngx_http_psgi_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
     ngx_http_psgi_loc_conf_t *conf = child;
     ngx_http_psgi_loc_conf_t *prev = parent;
 
-    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, cf->log, 0, 
-            "merge PSGI local conf");
-
-    // FIXME: Do I need this at all?
+    /* FIXME: Do I need this at all? */
     if (conf->app == NULL) {
         conf->sub = prev->sub;
         conf->app = prev->app;
@@ -224,19 +223,18 @@ ngx_http_psgi_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
 char *
 ngx_http_psgi_init_interpreter(ngx_conf_t *cf, ngx_http_psgi_main_conf_t *psgimcf)
 {
-    // Already have Perl interpreter
+    /* Already have Perl interpreter */
     if (psgimcf->perl != NULL) {
         return NGX_CONF_OK;
     }
 
-    // Create one
     psgimcf->perl = ngx_http_psgi_create_interpreter(cf);
 
     if (psgimcf->perl == NULL) {
         return NGX_CONF_ERROR;
     }
 
-    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, cf->log, 0, 
+    ngx_log_debug3(NGX_LOG_DEBUG_HTTP, cf->log, 0, 
             "Perl interpreter created");
 
     return NGX_CONF_OK;

@@ -13,9 +13,14 @@ ngx_http_psgi_process_response(ngx_http_request_t *r, SV *response, PerlInterpre
     if (SvTYPE(response) == SVt_PVCV || SvTYPE(response) == SVt_PVMG) {
         ngx_http_psgi_ctx_t *ctx = ngx_http_get_module_ctx(r, ngx_http_psgi_module);
         if (ctx == NULL) {
-            ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0,
-                    "PSGI panic: no psgi context found while processing response");
-            return NGX_ERROR;
+            ctx = ngx_pcalloc(r->pool, sizeof(ngx_http_psgi_module));
+            if (ctx == NULL) {
+                ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0,
+                        "PSGI panic: no psgi context found while processing response");
+                return NGX_ERROR;
+            }
+
+            ngx_http_set_ctx(r, ctx, ngx_http_psgi_module);
         }
         ctx->callback = response;
         SvREFCNT_inc(ctx->callback);
@@ -55,7 +60,7 @@ ngx_http_psgi_process_response(ngx_http_request_t *r, SV *response, PerlInterpre
     // Process HTTP status code
     SV **http_status = av_fetch(psgir, 0, 0);
 
-    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+    ngx_log_debug7(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
             "PSGI app returned status code: %d",  SvIV(http_status[0]));
 
     // Process headers
@@ -79,8 +84,8 @@ ngx_int_t
 ngx_http_psgi_process_headers(ngx_http_request_t *r, SV *headers, SV *status)
 {
 
-    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-            "process headers");
+    ngx_log_debug8(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+            "Process PSGI headers");
 
     if (r->headers_out.status == 0) {
         r->headers_out.status = SvIV(status);
@@ -102,9 +107,6 @@ ngx_http_psgi_process_headers(ngx_http_request_t *r, SV *headers, SV *status)
                 "Even number of header-value elements: %i. Possible error.", len);
     }
 
-    ngx_log_debug7(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-            "Go through list of headers");
-
     for (i = 0; i <= len; i+=2) {
         if (i + 1 > len)
             break;
@@ -120,7 +122,7 @@ ngx_http_psgi_process_headers(ngx_http_request_t *r, SV *headers, SV *status)
             r->headers_out.content_type.data = ngx_pnalloc(r->pool, vlen);
             if (r->headers_out.content_type.data == NULL) {
                 ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                        "In PSGI response header 'Content-Type' not defined");
+                        "In PSGI response: header 'Content-Type' not defined");
                 return NGX_ERROR;
             }
             r->headers_out.content_type.len = vlen;
@@ -154,11 +156,8 @@ ngx_int_t
 ngx_http_psgi_process_body(ngx_http_request_t *r, SV *body)
 {
 
-    /* TODO: According to PSGI spec body can be IO::Handle
-     * I should handle it correct
-     *
-     * If response object is something blessed (even ARRAYref) than we consider it as
-     * IO::Handle-like object according to PSGI spec
+    /* If response object is something blessed (even ARRAYref)
+     * than we consider it as IO::Handle-like object according to PSGI spec.
      * Thanks to au on #plack
      */
 
@@ -179,8 +178,10 @@ ngx_http_psgi_process_body(ngx_http_request_t *r, SV *body)
             return ngx_http_psgi_process_body_glob(r, (GV*)body);
 
         default:
-            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                    "PSGI app returned body of unsupported type: %s",  SvPV_nolen(body));
+            ngx_log_error(
+                    NGX_LOG_ERR, r->connection->log, 0,
+                    "PSGI app returned body of unsupported type: %s",
+                    SvPV_nolen(body));
 
             return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
@@ -189,9 +190,7 @@ ngx_http_psgi_process_body(ngx_http_request_t *r, SV *body)
 ngx_int_t
 ngx_http_psgi_process_body_glob(ngx_http_request_t *r, GV *body)
 {
-
-
-    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+    ngx_log_debug8(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
             "PSGI app returned filehandle: %s", SvPV_nolen(newRV((SV*)body)));
 
     ngx_chain_t   *first_chain = NULL;
@@ -245,12 +244,12 @@ ngx_http_psgi_process_body_glob(ngx_http_request_t *r, GV *body)
         LEAVE;
     }
 
-    if (first_chain == NULL) {
+    if (first_chain == NULL)
         return NGX_DONE;
-    }
 
-    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-            "Done reading filehandle");
+    ngx_log_debug8(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+            "Reached end of PSGI response filehandle");
+
     ngx_http_output_filter(r, first_chain);
     return NGX_OK;
 }
@@ -258,17 +257,16 @@ ngx_http_psgi_process_body_glob(ngx_http_request_t *r, GV *body)
 ngx_int_t
 ngx_http_psgi_process_body_array(ngx_http_request_t *r, AV *body)
 {
-    // Threat body as an ARRAYref
     int len = av_len((AV*)body);
     int i;
 
-    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+    ngx_log_debug7(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
             "PSGI app returned %d body chunks", len + 1);
 
     ngx_chain_t   *first_chain = NULL, *last_chain = NULL;
 
     if (len < 0) {
-        ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+        ngx_log_debug7(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                 "PSGI app returned zerro-elements body");
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
@@ -280,8 +278,6 @@ ngx_http_psgi_process_body_array(ngx_http_request_t *r, AV *body)
         SV **body_chunk = av_fetch(body, i, 0);
 
         p = (u_char *) SvPV(*body_chunk, plen);
-        ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                "Chunk %s", p);
 
         if (chain_buffer(r, p, plen, &first_chain, &last_chain) != NGX_OK) {
             ngx_log_error(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,

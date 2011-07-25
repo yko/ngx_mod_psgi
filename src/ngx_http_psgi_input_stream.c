@@ -60,7 +60,7 @@ PerlIONginxInput_read(pTHX_ PerlIO *f, void *vbuf, Size_t count)
 
 PERLIO_FUNCS_DECL(PerlIO_nginx_input) = {
     sizeof(PerlIO_funcs),
-    "nginx_input",
+    "ngx_input",
     sizeof(PerlIONginxInput),
     PERLIO_K_RAW,
     PerlIOBase_pushed,
@@ -98,23 +98,25 @@ SV *PerlIONginxInput_newhandle(ngx_http_request_t *r)
     ngx_log_t *log = r->connection->log;
 
     PerlIO *f;
-    GV *gv = (GV*)SvREFCNT_inc(newGVgen("Nginx::PSGI::input"));
+    GV *gv = (GV*)SvREFCNT_inc(newGVgen("Nginx::PSGI::Input"));
     IO *io = GvIOn(gv);
 
     if (gv)
         (void) hv_delete(GvSTASH(gv), GvNAME(gv), GvNAMELEN(gv), G_DISCARD);
+
+    /* Body in memory */
     if (r->request_body == NULL || r->request_body->temp_file == NULL) {
-        ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                "Open filehandle with layer to read from buffers");
+        ngx_log_debug8(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                "Open filehandle with 'ngx_input' layer to read from buffers");
 
-        f = PerlIO_tmpfile(aTHX); // TODO: Replace this
-        PerlIOBase(f)->flags = PERLIO_F_CANREAD | PERLIO_F_OPEN;
+        f = PerlIO_allocate(aTHX);
 
-        IoIFP(io) = f;
-        IoTYPE(io) = IoTYPE_RDONLY;
-
-        // Apply layer
         if ( (f = PerlIO_push(aTHX_ f, PERLIO_FUNCS_CAST(&PerlIO_nginx_input), NULL, NULL)) ) {
+            PerlIOBase(f)->flags = PERLIO_F_CANREAD | PERLIO_F_OPEN;
+
+            IoIFP(io) = f;
+            IoTYPE(io) = IoTYPE_RDONLY;
+
             PerlIONginxInput *st = PerlIOSelf(f, PerlIONginxInput);
             st->r = r;
         } else {
@@ -125,9 +127,12 @@ SV *PerlIONginxInput_newhandle(ngx_http_request_t *r)
         }
 
     } else {
+    /* Body in temp file */
 
-        ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                "Open PSGI request body temp file '%s'", r->request_body->temp_file->file.name.data);
+        ngx_log_debug8(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                "Open PSGI request body temp file '%s'",
+                r->request_body->temp_file->file.name.data
+                );
         bool result = do_open(gv,(char*)r->request_body->temp_file->file.name.data, r->request_body->temp_file->file.name.len,FALSE,O_RDONLY,0,NULL);
 
         if (!result) {
@@ -137,8 +142,6 @@ SV *PerlIONginxInput_newhandle(ngx_http_request_t *r)
             return NULL;
 
         }
-        ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                "Temp file opened");
     }
 
     return (SV*)newRV_inc((SV *)gv);
