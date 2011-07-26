@@ -17,7 +17,7 @@ GIVE IT A TRY
 
     git clone git://github.com/yko/ngx_mod_psgi.git
     cd ngx_mod_psgi
-    eg/try
+    make try
 
 DEPENDANCIES
     You may need to install some dev libraries, like:
