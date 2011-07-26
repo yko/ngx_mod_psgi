@@ -29,12 +29,13 @@ my $app = sub {
 sub psgi_simple_response {
     my ($env, $request_body) = @_;
     return [
-        404,
-        ['Content-Type' => 'text/plain', 'X-header' => 'X-Header content'],
-        [   "Hello World",
-            "\nRequest body:\n",
+        200,
+        ['Content-Type' => 'text/plain', 'X-Header' => 'X-Header content'],
+        [   "Hello World\n",
+            "\n-- request body start\n",
             $request_body,
-            "\n\nPSGI ENV:\n",
+            "\n-- request body end\n",
+            "\nPSGI ENV: ",
             Dumper($env)
         ]
     ];
