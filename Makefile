@@ -6,31 +6,49 @@ NGX_MAKE = ${NGX_DIR}/Makefile
 TMP_CONF = ${HOME}/tmp/nginx.conf
 TMP_CONF_TEMPLATE = ${HOME}/eg/nginx.conf
 PIDFILE = ${HOME}/tmp/nginx.pid
+NGX_BIN = ${NGX_DIR}/objs/nginx
 
 default: build
 
-build: ${NGX_MAKE} dirs
-	make -C ${NGX_DIR} 
+build: ${NGX_MAKE} configs
+	@make -C ${NGX_DIR}
 
-test: build
+test: ${NGX_BIN} configs
 	prove -lrv
 
-try: kill build configs
-	@${NGX_DIR}/objs/nginx
-	@echo Sending simple request with body: \"Client request body\"
-	@echo Answer:
+demo: ${NGX_BIN} kill configs
+	@${NGX_BIN}
 	@echo
+	@echo Sending simple request with body: \"Client request body\":
+	
 	curl http://127.0.0.1:3000/ -d "Client request body" -D -
-
-clean: kill
-	@rm       ${HOME}/log/* 2>1 /dev/null || echo clean
-	@rm   -r  ${HOME}/tmp/* 2>1 /dev/null || echo clean
+	@echo
+	@echo
+	@echo What to do now?
+	@echo
+	@echo
+	@echo You may want to see logs:
+	@echo
+	@echo     ${HOME}/log/access.log
+	@echo     ${HOME}/log/error.log
+	@echo
+	@echo You also may want to edit psgi app or nginx.conf and run \`make demo\` again:
+	@echo
+	@echo     ${HOME}/eg/helloworld.psgi
+	@echo     ${HOME}/tmp/nginx.conf
+	@echo
 
 realclean: clean
 	@if [ -f "${NGX_DIR}/Makefile" ]; then \
-		make -C  "${NGX_DIR}" clean; \
+		make -C  "${NGX_DIR}" clean > /dev/null; \
 	fi
-	@rm  -rf "${NGX_DIR}" "${NGX_DIST}" 2>1 /dev/null || echo clean # Looks like I really need -f here
+	@rm  -rf "${NGX_DIR}" "${NGX_DIST}" 2>&1 || echo -n '' # Looks like I really need -f here
+	@rm  -r ${HOME}/tmp 2>/dev/null || echo -n ''
+	@rm  -r ${HOME}/log 2>/dev/null || echo -n ''
+
+clean: kill
+	@rm       ${HOME}/log/* 2>/dev/null || echo -n ''
+	@rm   -r  ${HOME}/tmp/* 2>/dev/null || echo -n ''
 
 kill:
 	@if [ -f ${PIDFILE} ]; then \
@@ -42,15 +60,18 @@ dirs:
 	@mkdir -p ${HOME}/tmp/body
 	@mkdir -p ${HOME}/log
 
-configs: ${TMP_CONF}
+${NGX_BIN}:
+	@make build
+
+configs: dirs ${TMP_CONF}
 
 ${TMP_CONF}:
 	cp "${TMP_CONF_TEMPLATE}" "${TMP_CONF}"
-	perl -pi -e 's#^(\s*error_log\s+).*#\1"${HOME}/log/error.log" debug;#;' "${TMP_CONF}"
-	perl -pi -e 's#^(\s*psgi)\s+.*#\1 "${HOME}/eg/helloworld.psgi";#;'     "${TMP_CONF}"
+	@perl -pi -e 's#^(\s*error_log\s+).*#\1"${HOME}/log/error.log" debug;#;' "${TMP_CONF}"
+	@perl -pi -e 's#^(\s*psgi)\s+.*#\1 "${HOME}/eg/helloworld.psgi";#;'     "${TMP_CONF}"
 
 ${NGX_MAKE}: ${NGX_DIR}
-	cd ${NGX_DIR} > /dev/null; ./configure \
+	@cd ${NGX_DIR}; ./configure \
 		--without-http_charset_module \
 		--without-http_gzip_module \
 		--without-http_ssi_module \
@@ -86,4 +107,5 @@ ${NGX_DIR}: ${NGX_DIST}
 	tar xzf ${NGX_DIST}
 
 ${NGX_DIST}:
-	curl -O http://nginx.org/download/${NGX_DIST}
+	@echo Downloading nginx dist: ${NGX_DIST}
+	@curl -O http://nginx.org/download/${NGX_DIST}

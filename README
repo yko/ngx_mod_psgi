@@ -9,15 +9,35 @@ WARNING
     YOU HAVE BEEN WARNED.
 
 DESCRIPTION
-    ngx_http_psgi_module tries to run PSGI-compatible apps directly from nginx
-    because at this level headers already parsed and request body (if any) is ready to be read.
+    ngx_http_psgi provides PSGI support for nginx HTTP server
 
-GIVE IT A TRY
-    If you want to try, there's script that should help you. Just run:
+DEMO
+        git clone git://github.com/yko/ngx_mod_psgi.git
+        cd ngx_mod_psgi
+        make
+        make demo
 
-    git clone git://github.com/yko/ngx_mod_psgi.git
-    cd ngx_mod_psgi
-    make try
+    This builds nginx with psgi module and run demo PSGI application
+    at address http://127.0.0.1:3000/
+    After nginx started, demo sends POST request to server
+    and displays output.
+
+    Feel free to replace demo application and/or nginx.conf by your one,
+    re-run `make demo` and track down access and error logs
+    to see what's happening on server side.
+
+    You also may want to run tests from Plack::Test::Suite:
+
+        make test
+
+PRODUCTION
+    This module is not production-ready yet.
+    However, if you want to try it in production, feel free to use
+    'eg/nginx.conf' as an example. Also make sure you configure your nginx
+    with 'add-module' option:
+
+        ./configure [YOUR OPTIONS] --add-module=/path/to/ngx_http_psgi
+        make
 
 DEPENDANCIES
     You may need to install some dev libraries, like:
