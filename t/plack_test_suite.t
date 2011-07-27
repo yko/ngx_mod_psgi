@@ -1,8 +1,13 @@
 use strict;
 use warnings;
-use Plack::Test::Suite;
+BEGIN {
+    use Test::More;
+    eval { use Plack::Test::Suite };
+    if ($@) {
+        plan skip_all => "Plack::Test::Suite required for this test";
+    }
+}
 use FindBin;
-use Test::More;
 use Cwd 'abs_path';
 
 my $nginx     = 'http://nginx.org/download/nginx-1.0.4.tar.gz';
