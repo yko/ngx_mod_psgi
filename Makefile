@@ -16,7 +16,7 @@ build: ${NGX_MAKE} configs
 test: ${NGX_BIN} configs
 	prove -lrv
 
-demo: ${NGX_BIN} kill configs
+demo: kill clean_logs build configs
 	@${NGX_BIN}
 	@echo
 	@echo Sending simple request with body: \"Client request body\":
@@ -46,9 +46,11 @@ realclean: clean
 	@rm  -r ${HOME}/tmp 2>/dev/null || echo -n ''
 	@rm  -r ${HOME}/log 2>/dev/null || echo -n ''
 
-clean: kill
-	@rm       ${HOME}/log/* 2>/dev/null || echo -n ''
+clean: kill clean_logs
 	@rm   -r  ${HOME}/tmp/* 2>/dev/null || echo -n ''
+
+clean_logs:
+	@rm       ${HOME}/log/* 2>/dev/null || echo -n ''
 
 kill:
 	@if [ -f ${PIDFILE} ]; then \
