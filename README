@@ -39,7 +39,7 @@ PRODUCTION
         ./configure [YOUR OPTIONS] --add-module=/path/to/ngx_http_psgi
         make
 
-DEPENDANCIES
+DEPENDENCIES
     You may need to install some dev libraries, like:
 
         libperl-dev
