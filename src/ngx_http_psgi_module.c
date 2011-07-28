@@ -117,12 +117,9 @@ ngx_http_psgi_handler(ngx_http_request_t *r)
 
 void ngx_http_psgi_handler_with_body(ngx_http_request_t *r)
 {
-    ngx_http_module_t          *ctx;
     ngx_http_psgi_main_conf_t  *psgimcf;
     ngx_http_psgi_loc_conf_t   *psgilcf;
     ngx_log_t *log = r->connection->log;
-
-    ctx = ngx_http_get_module_ctx(r, ngx_http_psgi_module);
 
     psgilcf = ngx_http_get_module_loc_conf(r, ngx_http_psgi_module);
     psgimcf = ngx_http_get_module_main_conf(r, ngx_http_psgi_module);
