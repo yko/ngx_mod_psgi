@@ -89,7 +89,7 @@ PERLIO_FUNCS_DECL(PerlIO_nginx_input) = {
     NULL, //PerlIONginxInput_set_ptrcnt,
 };
 
-SV *PerlIONginxInput_newhandle(ngx_http_request_t *r)
+SV *PerlIONginxInput_newhandle(pTHX_ ngx_http_request_t *r)
 {
     /*
      * TODO: I need better error handling here

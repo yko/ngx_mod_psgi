@@ -4,11 +4,10 @@
 #include <perl.h>
 #include "ngx_http_psgi_module.h"
 
-SV *ngx_http_psgi_create_env(ngx_http_request_t *r, SV *app);
+SV *ngx_http_psgi_create_env(pTHX_ ngx_http_request_t *r, char *app);
 
 ngx_int_t ngx_http_psgi_perl_init_worker(ngx_cycle_t *cycle);
-ngx_int_t
-ngx_http_psgi_init_app(ngx_http_psgi_loc_conf_t *psgilcf, ngx_log_t *log);
+ngx_int_t ngx_http_psgi_init_app(pTHX_ ngx_http_psgi_loc_conf_t *psgilcf, ngx_log_t *log);
 
 PerlInterpreter *ngx_http_psgi_create_interpreter(ngx_conf_t *cf);
 

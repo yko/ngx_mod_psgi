@@ -1,10 +1,8 @@
 #include "ngx_http_psgi_response.h"
 #include "ngx_http_psgi_perl.h"
 
-ngx_int_t ngx_http_psgi_process_body(ngx_http_request_t *r, SV *body);
-
 ngx_int_t
-ngx_http_psgi_process_response(ngx_http_request_t *r, SV *response, PerlInterpreter *perl)
+ngx_http_psgi_process_response(pTHX_ ngx_http_request_t *r, SV *response, PerlInterpreter *perl)
 {
 
     if (SvROK(response))
@@ -26,9 +24,6 @@ ngx_http_psgi_process_response(ngx_http_request_t *r, SV *response, PerlInterpre
         SvREFCNT_inc(ctx->callback);
         return ngx_http_psgi_perl_call_psgi_callback(r);
     }
-
-    dTHXa(perl);
-    PERL_SET_CONTEXT(perl);
 
     // Response should be reference to ARRAY
     if (SvTYPE(response) != SVt_PVAV) {
@@ -66,7 +61,7 @@ ngx_http_psgi_process_response(ngx_http_request_t *r, SV *response, PerlInterpre
     // Process headers
     SV **headers = av_fetch(psgir, 1, 0);
 
-    if (ngx_http_psgi_process_headers(r, *headers, *http_status) != NGX_OK) {
+    if (ngx_http_psgi_process_headers(aTHX_ r, *headers, *http_status) != NGX_OK) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                 "Failed to process PSGI response headers");
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
@@ -76,12 +71,12 @@ ngx_http_psgi_process_response(ngx_http_request_t *r, SV *response, PerlInterpre
 
 
     SV **body = av_fetch(psgir, 2, 0);
-    return ngx_http_psgi_process_body(r, *body);
+    return ngx_http_psgi_process_body(aTHX_ r, *body);
 
 }
 
 ngx_int_t
-ngx_http_psgi_process_headers(ngx_http_request_t *r, SV *headers, SV *status)
+ngx_http_psgi_process_headers(pTHX_ ngx_http_request_t *r, SV *headers, SV *status)
 {
 
     ngx_log_debug8(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
@@ -153,7 +148,7 @@ ngx_http_psgi_process_headers(ngx_http_request_t *r, SV *headers, SV *status)
 }
 
 ngx_int_t
-ngx_http_psgi_process_body(ngx_http_request_t *r, SV *body)
+ngx_http_psgi_process_body(pTHX_ ngx_http_request_t *r, SV *body)
 {
 
     /* If response object is something blessed (even ARRAYref)
@@ -171,11 +166,11 @@ ngx_http_psgi_process_body(ngx_http_request_t *r, SV *body)
 
     switch (SvTYPE(body)) {
         case SVt_PVAV:
-            return ngx_http_psgi_process_body_array(r, (AV*)body);
+            return ngx_http_psgi_process_body_array(aTHX_ r, (AV*)body);
 
         case SVt_PVMG:
         case SVt_PVGV:
-            return ngx_http_psgi_process_body_glob(r, (GV*)body);
+            return ngx_http_psgi_process_body_glob(aTHX_ r, (GV*)body);
 
         default:
             ngx_log_error(
@@ -188,7 +183,7 @@ ngx_http_psgi_process_body(ngx_http_request_t *r, SV *body)
 }
 
 ngx_int_t
-ngx_http_psgi_process_body_glob(ngx_http_request_t *r, GV *body)
+ngx_http_psgi_process_body_glob(pTHX_ ngx_http_request_t *r, GV *body)
 {
     ngx_log_debug8(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
             "PSGI app returned filehandle: %s", SvPV_nolen(newRV((SV*)body)));
@@ -255,7 +250,7 @@ ngx_http_psgi_process_body_glob(ngx_http_request_t *r, GV *body)
 }
 
 ngx_int_t
-ngx_http_psgi_process_body_array(ngx_http_request_t *r, AV *body)
+ngx_http_psgi_process_body_array(pTHX_ ngx_http_request_t *r, AV *body)
 {
     int len = av_len((AV*)body);
     int i;

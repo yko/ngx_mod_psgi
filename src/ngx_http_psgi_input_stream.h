@@ -27,6 +27,6 @@ PerlIONginxInput_open(pTHX_ PerlIO_funcs * self, PerlIO_list_t * layers, IV n,
 
 PerlIO_funcs PerlIO_nginx_input;
 
-SV *PerlIONginxInput_newhandle(ngx_http_request_t *r);
+SV *PerlIONginxInput_newhandle(pTHX_ ngx_http_request_t *r);
 
 #endif

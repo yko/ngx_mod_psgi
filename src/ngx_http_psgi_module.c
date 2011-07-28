@@ -69,7 +69,8 @@ ngx_http_psgi(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         }
     }
 
-    psgilcf->app = newSVpvn((char *) value[1].data, value[1].len);
+    psgilcf->app = ngx_palloc(cf->pool, value[1].len + 1);
+    ngx_cpymem(psgilcf->app, value[1].data, value[1].len + 1);
 
     clcf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_core_module);
     clcf->handler = ngx_http_psgi_handler;
@@ -135,7 +136,7 @@ void ngx_http_psgi_handler_with_body(ngx_http_request_t *r)
 
     ngx_log_debug3(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                     "Serving request with PSGI app \"%s\"",
-                    SvPV_nolen(psgilcf->app));
+                    psgilcf->app);
 
     /* No local interpreter. Reuse main */
     if (psgilcf->perl == NULL) {
@@ -146,8 +147,8 @@ void ngx_http_psgi_handler_with_body(ngx_http_request_t *r)
 
     ngx_http_psgi_perl_handler(r, psgilcf, psgimcf->perl);
 
-    ngx_log_debug3(NGX_LOG_DEBUG_HTTP, log, 0, 
-            "Finished serving request", psgilcf->app);
+    ngx_log_debug3(NGX_LOG_DEBUG_HTTP, log, 0,
+            "Finished serving request");
 }
 
 void *

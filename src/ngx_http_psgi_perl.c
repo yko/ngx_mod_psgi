@@ -4,7 +4,7 @@
 #include "ngx_http_psgi_input_stream.h"
 EXTERN_C void xs_init (pTHX);
 
-SV *ngx_http_psgi_create_env(ngx_http_request_t *r, SV *app)
+SV *ngx_http_psgi_create_env(pTHX_ ngx_http_request_t *r, char *app)
 {
     ngx_list_part_t        *part;
     ngx_table_elt_t        *h;
@@ -23,12 +23,12 @@ SV *ngx_http_psgi_create_env(ngx_http_request_t *r, SV *app)
     hv_store(env, "psgi.version", sizeof("psgi.version")-1, newRV_inc((SV*)version), 0);
 
     /* FIXME: after any of this two operations $! is set to 'Inappropriate ioctl for device' */
-    SV *errors_h = PerlIONginxError_newhandle(r);
+    SV *errors_h = PerlIONginxError_newhandle(aTHX_ r);
     if (errors_h == NULL)
         return NULL;
     hv_store(env, "psgi.errors", sizeof("psgi.errors")-1, errors_h, 0);
 
-    SV *input_h = PerlIONginxInput_newhandle(r);
+    SV *input_h = PerlIONginxInput_newhandle(aTHX_ r);
     if (input_h == NULL)
         return NULL;
     hv_store(env, "psgi.input", sizeof("psgi.input")-1, input_h, 0);
@@ -207,24 +207,24 @@ ngx_http_psgi_perl_handler(ngx_http_request_t *r, ngx_http_psgi_loc_conf_t *psgi
     ngx_int_t retval = NGX_ERROR;
     ngx_log_t *log = r->connection->log;
 
+    dTHXa(perl);
+    PERL_SET_CONTEXT(perl);
+
     if (psgilcf->sub == NULL) {
 
-        if(ngx_http_psgi_init_app(psgilcf, log) != NGX_OK) {
+        if(ngx_http_psgi_init_app(aTHX_ psgilcf, log) != NGX_OK) {
             return NGX_ERROR;
         }
     }
 
-    ngx_log_debug5(NGX_LOG_DEBUG_HTTP, log, 0,
-            "Running PSGI app \"%s\"",
-            SvPV_nolen(psgilcf->app));
-
     {
         int count;
 
-        dTHXa(perl);
-        PERL_SET_CONTEXT(perl);
+        ngx_log_debug5(NGX_LOG_DEBUG_HTTP, log, 0,
+                "Running PSGI app \"%s\"",
+                psgilcf->app);
 
-        SV *env = ngx_http_psgi_create_env(r, psgilcf->app);
+        SV *env = ngx_http_psgi_create_env(aTHX_ r, psgilcf->app);
 
         dSP;
 
@@ -253,11 +253,11 @@ ngx_http_psgi_perl_handler(ngx_http_request_t *r, ngx_http_psgi_loc_conf_t *psgi
         }
         else if (count < 1) {
             ngx_log_error(NGX_LOG_ERR, log, 0,
-                    "PSGI app \"%V\" did not returned value", psgilcf->app, SvPV_nolen(ERRSV));
+                    "PSGI app \"%s\" did not returned value: %s", psgilcf->app, SvPV_nolen(ERRSV));
             ngx_http_finalize_request(r, NGX_HTTP_INTERNAL_SERVER_ERROR);
             retval = NGX_ERROR;
         } else {
-            retval = ngx_http_psgi_process_response(r, POPs, perl);
+            retval = ngx_http_psgi_process_response(aTHX_ r, POPs, perl);
             ngx_http_finalize_request(r, retval);
         }
 
@@ -269,7 +269,7 @@ ngx_http_psgi_perl_handler(ngx_http_request_t *r, ngx_http_psgi_loc_conf_t *psgi
 }
 
 ngx_int_t
-ngx_http_psgi_init_app(ngx_http_psgi_loc_conf_t *psgilcf, ngx_log_t *log)
+ngx_http_psgi_init_app(pTHX_ ngx_http_psgi_loc_conf_t *psgilcf, ngx_log_t *log)
 {
     ngx_int_t retval = NGX_ERROR;
 
@@ -286,14 +286,10 @@ ngx_http_psgi_init_app(ngx_http_psgi_loc_conf_t *psgilcf, ngx_log_t *log)
     }
 
     ngx_log_debug5(NGX_LOG_DEBUG_HTTP, log, 0,
-            "Loading app \"%s\"", SvPV_nolen(psgilcf->app));
+            "Loading app \"%s\"", psgilcf->app);
 
     /* Init PSGI application */
     {
-        dTHXa(psgilcf->perl);
-        PERL_SET_CONTEXT(psgilcf->perl);
-
-
         dSP;
 
         ENTER;
@@ -302,7 +298,7 @@ ngx_http_psgi_init_app(ngx_http_psgi_loc_conf_t *psgilcf, ngx_log_t *log)
         PUSHMARK(SP);
 
         /* FIXME: This should be written way cleaner! */
-        SV *call = newSVpvf(aTHX_ "sub { return do '%s' }", SvPV_nolen(psgilcf->app));
+        SV *call = newSVpvf("sub { return do '%s' }", psgilcf->app);
 
         SV *cvrv = eval_pv(SvPV_nolen(call), FALSE);
 
@@ -311,7 +307,7 @@ ngx_http_psgi_init_app(ngx_http_psgi_loc_conf_t *psgilcf, ngx_log_t *log)
         if (SvTRUE(ERRSV))
         {
             ngx_log_error(NGX_LOG_ERR, log, 0,
-                    "Failed to initialize psgi app \"%s\": %s", SvPV_nolen(psgilcf->app), SvPV_nolen(ERRSV));
+                    "Failed to initialize psgi app \"%s\": %s", psgilcf->app, SvPV_nolen(ERRSV));
         } else if (count < 1) {
             ngx_log_error(NGX_LOG_ERR, log, 0,
                     "Application '%s' returned empty list", psgilcf->app);
@@ -335,7 +331,7 @@ ngx_http_psgi_init_app(ngx_http_psgi_loc_conf_t *psgilcf, ngx_log_t *log)
 
                 ngx_log_error(NGX_LOG_ERR, log, 0,
                         "psgi app \"%s\" returned something that is not a code reference: '%s'",
-                        SvPV_nolen(psgilcf->app), SvPV_nolen(psgilcf->sub));
+                        psgilcf->app, SvPV_nolen(psgilcf->sub));
             }
         }
 
@@ -404,7 +400,7 @@ ngx_http_psgi_create_interpreter(ngx_conf_t *cf)
     }
 
     {
-        char *my_argv[] = { "", "-e", "0" };
+        char *my_argv[] = { "", "-MIO::Handle", "-e", "0" };
 
         dTHXa(perl);
         PERL_SET_CONTEXT(perl);

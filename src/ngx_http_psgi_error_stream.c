@@ -60,7 +60,7 @@ PERLIO_FUNCS_DECL(PerlIO_nginx_error) = {
     NULL, //PerlIONginxError_set_ptrcnt,
 };
 
-SV *PerlIONginxError_newhandle(ngx_http_request_t *r)
+SV *PerlIONginxError_newhandle(pTHX_ ngx_http_request_t *r)
 {
     /*
      * TODO: I need better error handling here

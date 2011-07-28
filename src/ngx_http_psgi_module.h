@@ -20,7 +20,7 @@ typedef struct {
 
 typedef struct {
     SV                *sub;
-    SV                *app;
+    char              *app;
     PerlInterpreter   *perl;
 } ngx_http_psgi_loc_conf_t;
 
