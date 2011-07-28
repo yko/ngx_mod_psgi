@@ -17,6 +17,7 @@ test: ${NGX_BIN} configs
 	prove -lrv
 
 demo: kill clean_logs build configs
+	clear
 	@${NGX_BIN}
 	@echo
 	@echo Sending simple request with body: \"Client request body\":
@@ -48,6 +49,7 @@ realclean: clean
 
 clean: kill clean_logs
 	@rm   -r  ${HOME}/tmp/* 2>/dev/null || echo -n ''
+	@rm       ${NGX_BIN} || echo -n ''
 
 clean_logs:
 	@rm       ${HOME}/log/* 2>/dev/null || echo -n ''
