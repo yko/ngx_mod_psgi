@@ -2,7 +2,7 @@ use strict;
 use warnings;
 BEGIN {
     use Test::More;
-    eval { use Plack::Test::Suite };
+    eval { require Plack::Test::Suite };
     if ($@) {
         plan skip_all => "Plack::Test::Suite required for this test";
     }
