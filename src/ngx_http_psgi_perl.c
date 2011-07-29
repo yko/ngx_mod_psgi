@@ -159,6 +159,18 @@ SV *ngx_http_psgi_create_env(pTHX_ ngx_http_request_t *r, char *app)
             h = part->elts;
             i = 0;
         }
+
+        /* The environment MUST NOT contain keys named HTTP_CONTENT_TYPE or HTTP_CONTENT_LENGTH.
+         * PSGI 1.09_3
+         */
+        if (ngx_strncasecmp(h[i].key.data, (u_char*)"CONTENT-LENGTH", h[i].key.len) == 0) {
+            continue;
+        }
+
+        if (ngx_strncasecmp(h[i].key.data, (u_char*)"CONTENT-TYPE", h[i].key.len) == 0) {
+            continue;
+        }
+
         p = ngx_pnalloc(r->pool, sizeof("HTTP_") - 1 + h[i].key.len);
 
         if (p == NULL) {
