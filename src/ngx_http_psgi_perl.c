@@ -19,14 +19,18 @@ SV *ngx_http_psgi_create_env(pTHX_ ngx_http_request_t *r, char *app)
     /* PSGI version 1.0, arrayref [1,0] */
     _version[0] = newSViv(1);
     _version[1] = newSViv(0);
+
     version = av_make(2, _version);
-    hv_store(env, "psgi.version", sizeof("psgi.version")-1, newRV_inc((SV*)version), 0);
+    SvREFCNT_dec(_version[0]);
+    SvREFCNT_dec(_version[1]);
+
+    hv_store(env, "psgi.version", sizeof("psgi.version")-1, newRV_noinc((SV*)version), 0);
 
     /* FIXME: after any of this two operations $! is set to 'Inappropriate ioctl for device' */
     SV *errors_h = PerlIONginxError_newhandle(aTHX_ r);
     if (errors_h == NULL)
         return NULL;
-    hv_store(env, "psgi.errors", sizeof("psgi.errors")-1, errors_h, 0);
+    hv_store(env, "psgi.errors", sizeof("psgi.errors")-1, sv_2mortal(errors_h), 0);
 
     SV *input_h = PerlIONginxInput_newhandle(aTHX_ r);
     if (input_h == NULL)
@@ -209,7 +213,7 @@ SV *ngx_http_psgi_create_env(pTHX_ ngx_http_request_t *r, char *app)
         c += 2;
     }
 
-    return newRV_inc((SV*)env);
+    return newRV_noinc((SV*)env);
 }
 
 ngx_int_t
