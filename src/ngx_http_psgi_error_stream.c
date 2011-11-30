@@ -1,5 +1,4 @@
 #include "ngx_http_psgi_error_stream.h"
-#include "ngx_http_psgi_module.h"
 
 PerlIO *
 PerlIONginxError_open(pTHX_ PerlIO_funcs * self, PerlIO_list_t * layers, IV n,
@@ -26,7 +25,8 @@ PerlIONginxError_write(pTHX_ PerlIO * f, const void *vbuf, Size_t count)
     // I need to quote '%' characters or disable printf in logging somehow
     ngx_log_error(NGX_LOG_ERR, st->log, 0,
             "%s", (const char *)vbuf);
-    return 0;
+
+    return count;
 }
 
 PERLIO_FUNCS_DECL(PerlIO_nginx_error) = {
@@ -34,9 +34,9 @@ PERLIO_FUNCS_DECL(PerlIO_nginx_error) = {
     "ngx_error",
     sizeof(PerlIONginxError),
     PERLIO_K_RAW,
-    PerlIOBase_pushed,
-    NULL, //PerlIONginxError_popped,
-    NULL, //PerlIONginxError_open,
+    NULL, // PerlIONginxError_pushed,
+    NULL, // PerlIONginxError_popped,
+    PerlIONginxError_open,
     NULL, //PerlIOBase_binmode,
     NULL, //PerlIONginxError_arg,
     PerlIONginxError_fileno,
@@ -62,35 +62,23 @@ PERLIO_FUNCS_DECL(PerlIO_nginx_error) = {
 
 SV *PerlIONginxError_newhandle(pTHX_ ngx_http_request_t *r)
 {
-    /*
-     * TODO: I need better error handling here
-     */
+    GV *gv = (GV*)SvREFCNT_inc(newGVgen("Nginx::PSGI::Error"));
+    if (!gv)
+        return &PL_sv_undef;
 
-    ngx_log_t *log = r->connection->log;
+    (void) hv_delete(GvSTASH(gv), GvNAME(gv), GvNAMELEN(gv), G_DISCARD);
+    PerlIO *f = PerlIO_allocate(aTHX);
 
-    IO* io;
-    GV *gv;
-    PerlIO *f = PerlIO_allocate(aTHX); // FIXME: RLY allocate?
-    gv = (GV*)SvREFCNT_inc(newGVgen("Nginx::PSGI::Error"));
-
-    io = GvIOn(gv);
-    if (gv)
-        (void) hv_delete(GvSTASH(gv), GvNAME(gv), GvNAMELEN(gv), G_DISCARD);
-
-    // Kinda bless
-    if ( (f = PerlIO_push(aTHX_ f, PERLIO_FUNCS_CAST(&PerlIO_nginx_error), NULL, NULL)) ) {
-        PerlIOBase(f)->flags = PERLIO_F_CANWRITE | PERLIO_F_OPEN;
-        PerlIONginxError *st = PerlIOSelf(f, PerlIONginxError);
-        IoOFP(io) = f;
-        IoTYPE(io) = IoTYPE_WRONLY;
-        st->log = log;
-
-    } else {
-        ngx_log_error(NGX_LOG_ERR, log, 0,
-                "Error pushing NginxError layer to FH"
-                );
-        return NULL;
+    if (!(f = PerlIO_push(aTHX_ f, PERLIO_FUNCS_CAST(&PerlIO_nginx_error), ">", NULL)) ) {
+         return &PL_sv_undef;
     }
 
-    return newRV_inc((SV *)gv);
+    if (!do_open(gv, "+>&", 3, FALSE, O_WRONLY, 0, f)) {
+        return &PL_sv_undef;
+    }
+
+    PerlIONginxError *st = PerlIOSelf(f, PerlIONginxError);
+    st->log = r->connection->log;
+
+    return newRV_noinc((SV*)gv);
 }

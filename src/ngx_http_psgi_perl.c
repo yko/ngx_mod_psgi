@@ -30,7 +30,7 @@ SV *ngx_http_psgi_create_env(pTHX_ ngx_http_request_t *r, char *app)
     SV *errors_h = PerlIONginxError_newhandle(aTHX_ r);
     if (errors_h == NULL)
         return NULL;
-    hv_store(env, "psgi.errors", sizeof("psgi.errors")-1, sv_2mortal(errors_h), 0);
+    hv_store(env, "psgi.errors", sizeof("psgi.errors")-1, errors_h, 0);
 
     SV *input_h = PerlIONginxInput_newhandle(aTHX_ r);
     if (input_h == NULL)
@@ -240,12 +240,15 @@ ngx_http_psgi_perl_handler(ngx_http_request_t *r, ngx_http_psgi_loc_conf_t *psgi
                 "Running PSGI app \"%s\"",
                 psgilcf->app);
 
-        SV *env = ngx_http_psgi_create_env(aTHX_ r, psgilcf->app);
 
         dSP;
 
         ENTER;
         SAVETMPS;
+
+        // ngx_http_psgi_create_env should be called between SAVETMPS and FREETMPS
+        SV *env = ngx_http_psgi_create_env(aTHX_ r, psgilcf->app);
+
         PUSHMARK(SP);
 
         XPUSHs(sv_2mortal(env));
@@ -281,6 +284,7 @@ ngx_http_psgi_perl_handler(ngx_http_request_t *r, ngx_http_psgi_loc_conf_t *psgi
         FREETMPS;
         LEAVE;
     }
+
     return retval;
 }
 

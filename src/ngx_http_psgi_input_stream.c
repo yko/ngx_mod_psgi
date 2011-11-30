@@ -63,9 +63,9 @@ PERLIO_FUNCS_DECL(PerlIO_nginx_input) = {
     "ngx_input",
     sizeof(PerlIONginxInput),
     PERLIO_K_RAW,
-    PerlIOBase_pushed,
+    NULL, //PerlIOBase_pushed,
     NULL, //PerlIONginxInput_popped,
-    NULL, //PerlIONginxInput_open,
+    PerlIONginxInput_open,
     NULL, //PerlIOBase_binmode,
     NULL, //PerlIONginxInput_arg,
     PerlIONginxInput_fileno,
@@ -91,43 +91,41 @@ PERLIO_FUNCS_DECL(PerlIO_nginx_input) = {
 
 SV *PerlIONginxInput_newhandle(pTHX_ ngx_http_request_t *r)
 {
-    /*
-     * TODO: I need better error handling here
-     */
-
     ngx_log_t *log = r->connection->log;
 
-    PerlIO *f;
     GV *gv = (GV*)SvREFCNT_inc(newGVgen("Nginx::PSGI::Input"));
-    IO *io = GvIOn(gv);
+    if (!gv)
+        return &PL_sv_undef;
 
-    if (gv)
-        (void) hv_delete(GvSTASH(gv), GvNAME(gv), GvNAMELEN(gv), G_DISCARD);
+    (void) hv_delete(GvSTASH(gv), GvNAME(gv), GvNAMELEN(gv), G_DISCARD);
 
     /* Body in memory */
     if (r->request_body == NULL || r->request_body->temp_file == NULL) {
         ngx_log_debug8(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                 "Open filehandle with 'ngx_input' layer to read from buffers");
 
-        f = PerlIO_allocate(aTHX);
+        PerlIO *f = PerlIO_allocate(aTHX);
 
-        if ( (f = PerlIO_push(aTHX_ f, PERLIO_FUNCS_CAST(&PerlIO_nginx_input), NULL, NULL)) ) {
-            PerlIOBase(f)->flags = PERLIO_F_CANREAD | PERLIO_F_OPEN;
-
-            IoIFP(io) = f;
-            IoTYPE(io) = IoTYPE_RDONLY;
-
-            PerlIONginxInput *st = PerlIOSelf(f, PerlIONginxInput);
-            st->r = r;
-        } else {
+        if (!(f = PerlIO_push(aTHX_ f, PERLIO_FUNCS_CAST(&PerlIO_nginx_input), "<", NULL)) ) {
             ngx_log_error(NGX_LOG_ERR, log, 0,
                     "Error pushing layer to FH"
                     );
-            return NULL;
+            return &PL_sv_undef;
         }
 
+        if (!do_open(gv, "+<&", 3, FALSE, O_RDONLY, 0, f)) {
+            ngx_log_error(NGX_LOG_ERR, log, 0,
+                    "Error opening GV"
+                    );
+            // FIXME PerlIO_close
+            return &PL_sv_undef;
+        }
+
+        PerlIONginxInput *st = PerlIOSelf(f, PerlIONginxInput);
+        st->r = r;
+
     } else {
-    /* Body in temp file */
+        /* Body in temp file */
 
         ngx_log_debug8(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                 "Open PSGI request body temp file '%s'",
@@ -139,10 +137,11 @@ SV *PerlIONginxInput_newhandle(pTHX_ ngx_http_request_t *r)
             ngx_log_error(NGX_LOG_ERR, log, 0,
                     "Error opening file"
                     );
+            // FIXME PerlIO_close
             return NULL;
 
         }
     }
 
-    return (SV*)newRV_inc((SV *)gv);
+    return (SV*)newRV_noinc((SV *)gv);
 }
