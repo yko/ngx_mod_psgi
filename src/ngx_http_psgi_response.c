@@ -55,7 +55,7 @@ ngx_http_psgi_process_response(pTHX_ ngx_http_request_t *r, SV *response, PerlIn
     // Process HTTP status code
     SV **http_status = av_fetch(psgir, 0, 0);
 
-    ngx_log_debug7(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
             "PSGI app returned status code: %d",  SvIV(http_status[0]));
 
     // Process headers
@@ -79,7 +79,7 @@ ngx_int_t
 ngx_http_psgi_process_headers(pTHX_ ngx_http_request_t *r, SV *headers, SV *status)
 {
 
-    ngx_log_debug8(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
             "Process PSGI headers");
 
     if (r->headers_out.status == 0) {
@@ -185,7 +185,7 @@ ngx_http_psgi_process_body(pTHX_ ngx_http_request_t *r, SV *body)
 ngx_int_t
 ngx_http_psgi_process_body_glob(pTHX_ ngx_http_request_t *r, GV *body)
 {
-    ngx_log_debug8(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
             "PSGI app returned filehandle: %s", SvPV_nolen(newRV((SV*)body)));
 
     ngx_chain_t   *first_chain = NULL;
@@ -242,7 +242,7 @@ ngx_http_psgi_process_body_glob(pTHX_ ngx_http_request_t *r, GV *body)
     if (first_chain == NULL)
         return NGX_DONE;
 
-    ngx_log_debug8(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
             "Reached end of PSGI response filehandle");
 
     ngx_http_output_filter(r, first_chain);
@@ -255,13 +255,13 @@ ngx_http_psgi_process_body_array(pTHX_ ngx_http_request_t *r, AV *body)
     int len = av_len((AV*)body);
     int i;
 
-    ngx_log_debug7(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
             "PSGI app returned %d body chunks", len + 1);
 
     ngx_chain_t   *first_chain = NULL, *last_chain = NULL;
 
     if (len < 0) {
-        ngx_log_debug7(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+        ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                 "PSGI app returned zerro-elements body");
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }

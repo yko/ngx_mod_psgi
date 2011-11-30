@@ -187,7 +187,7 @@ SV *ngx_http_psgi_create_env(pTHX_ ngx_http_request_t *r, char *app)
         p = ngx_copy(p, (u_char*)"HTTP_", sizeof("HTTP_")-1);
         p = ngx_copy(p, h[i].key.data, h[i].key.len );
 
-        ngx_log_debug7(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+        ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                 "Set env header: '%s' => '%s'",
                 h[i].key.data, h[i].value.data);
 
@@ -236,7 +236,7 @@ ngx_http_psgi_perl_handler(ngx_http_request_t *r, ngx_http_psgi_loc_conf_t *psgi
     {
         int count;
 
-        ngx_log_debug5(NGX_LOG_DEBUG_HTTP, log, 0,
+        ngx_log_debug1(NGX_LOG_DEBUG_HTTP, log, 0,
                 "Running PSGI app \"%s\"",
                 psgilcf->app);
 
@@ -257,7 +257,7 @@ ngx_http_psgi_perl_handler(ngx_http_request_t *r, ngx_http_psgi_loc_conf_t *psgi
 
         count = call_sv(psgilcf->sub, G_EVAL|G_SCALAR);
 
-        ngx_log_debug7(NGX_LOG_DEBUG_HTTP, log, 0,
+        ngx_log_debug1(NGX_LOG_DEBUG_HTTP, log, 0,
                 "PSGI app response: %d elements", count);
 
         SPAGAIN;
@@ -305,7 +305,7 @@ ngx_http_psgi_init_app(pTHX_ ngx_http_psgi_loc_conf_t *psgilcf, ngx_log_t *log)
         return NGX_OK;
     }
 
-    ngx_log_debug5(NGX_LOG_DEBUG_HTTP, log, 0,
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, log, 0,
             "Loading app \"%s\"", psgilcf->app);
 
     /* Init PSGI application */
@@ -344,7 +344,7 @@ ngx_http_psgi_init_app(pTHX_ ngx_http_psgi_loc_conf_t *psgilcf, ngx_log_t *log)
             if (SvTYPE(psgilcf->sub) == SVt_PVCV || SvTYPE(psgilcf->sub) == SVt_PVMG) {
                 SvREFCNT_inc(psgilcf->sub);
 
-                ngx_log_debug5(NGX_LOG_DEBUG_HTTP, log, 0,
+                ngx_log_debug1(NGX_LOG_DEBUG_HTTP, log, 0,
                         "Application successfully initialized: %s", SvPV_nolen(psgilcf->sub));
                 retval = NGX_OK;
             } else {
@@ -368,7 +368,7 @@ ngx_http_psgi_perl_init_worker(ngx_cycle_t *cycle)
     ngx_http_psgi_main_conf_t  *psgimcf =
         ngx_http_cycle_get_module_main_conf(cycle, ngx_http_psgi_module);
 
-    ngx_log_debug5(NGX_LOG_DEBUG_HTTP, cycle->log, 0,
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, cycle->log, 0,
             "Init Perl interpreter in worker %d", ngx_pid);
 
     if (psgimcf) {
@@ -404,7 +404,7 @@ ngx_http_psgi_create_interpreter(ngx_conf_t *cf)
     int                n;
     PerlInterpreter   *perl;
 
-    ngx_log_debug5(NGX_LOG_DEBUG_HTTP, cf->log, 0,
+    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, cf->log, 0,
             "Create PSGI Perl interpreter");
 
     /* FIXME: Some code from ngx_http_perl_module.c I don't understand */
@@ -455,7 +455,7 @@ ngx_http_psgi_perl_exit(ngx_cycle_t *cycle)
     ngx_http_psgi_main_conf_t  *psgimcf =
         ngx_http_cycle_get_module_main_conf(cycle, ngx_http_psgi_module);
 
-    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, cycle->log, 0, "psgi perl term");
+    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, cycle->log, 0, "psgi perl term");
 
     (void) perl_destruct(psgimcf->perl);
 
@@ -468,7 +468,7 @@ ngx_int_t
 ngx_http_psgi_perl_call_psgi_callback(ngx_http_request_t *r)
 {
     /* FIXME: Write actual code here */
-    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                     "Call PSGI callback");
 
     ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,

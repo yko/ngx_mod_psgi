@@ -101,7 +101,7 @@ SV *PerlIONginxInput_newhandle(pTHX_ ngx_http_request_t *r)
 
     /* Body in memory */
     if (r->request_body == NULL || r->request_body->temp_file == NULL) {
-        ngx_log_debug8(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+        ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                 "Open filehandle with 'ngx_input' layer to read from buffers");
 
         PerlIO *f = PerlIO_allocate(aTHX);
@@ -127,7 +127,7 @@ SV *PerlIONginxInput_newhandle(pTHX_ ngx_http_request_t *r)
     } else {
         /* Body in temp file */
 
-        ngx_log_debug8(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+        ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                 "Open PSGI request body temp file '%s'",
                 r->request_body->temp_file->file.name.data
                 );
