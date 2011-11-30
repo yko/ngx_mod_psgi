@@ -31,7 +31,7 @@ sub psgi_simple_response {
     return [
         200,
         ['Content-Type' => 'text/plain', 'X-Header' => 'X-Header content'],
-        [   "Hello World\n",
+        [   "Hello World from Perl $]\n",
             "\n-- request body start\n",
             $request_body,
             "\n-- request body end\n",
