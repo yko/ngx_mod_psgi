@@ -13,7 +13,7 @@ default: build
 build: ${NGX_MAKE} configs
 	@make -C ${NGX_DIR}
 
-test: ${NGX_BIN} configs
+test: ${NGX_BIN} clean_logs configs
 	prove -lrv
 
 demo: kill clean_logs build configs
