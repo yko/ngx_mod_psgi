@@ -274,9 +274,6 @@ ngx_http_psgi_process_body_array(pTHX_ ngx_http_request_t *r, AV *body)
 
         p = (u_char *) SvPV(*body_chunk, plen);
 
-        if (!plen)
-            continue;
-
         if (chain_buffer(r, p, plen, &first_chain, &last_chain) != NGX_OK) {
             ngx_log_error(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                     "Error chaining psgi response buffer");
