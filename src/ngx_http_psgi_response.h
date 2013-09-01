@@ -5,6 +5,7 @@
 #include "ngx_http_psgi_module.h"
 
 ngx_int_t ngx_http_psgi_process_response(pTHX_ ngx_http_request_t *r, SV *response, PerlInterpreter *perl);
+ngx_int_t ngx_http_psgi_process_array_response(pTHX_ ngx_http_request_t *r, SV *response)
 ngx_int_t ngx_http_psgi_process_headers(pTHX_ ngx_http_request_t *r, SV *headers, SV *status);
 ngx_int_t ngx_http_psgi_process_body(pTHX_ ngx_http_request_t *r, SV *body);
 ngx_int_t ngx_http_psgi_process_body_array(pTHX_ ngx_http_request_t *r, AV *body);

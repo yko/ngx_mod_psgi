@@ -25,6 +25,12 @@ ngx_http_psgi_process_response(pTHX_ ngx_http_request_t *r, SV *response, PerlIn
         return ngx_http_psgi_perl_call_psgi_callback(aTHX_ r);
     }
 
+    return ngx_http_psgi_process_array_response(aTHX_ r, response);
+}
+
+ngx_int_t
+ngx_http_psgi_process_array_response(pTHX_ ngx_http_request_t *r, SV *response)
+{
     // Response should be reference to ARRAY
     if (SvTYPE(response) != SVt_PVAV) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
@@ -43,10 +49,25 @@ ngx_http_psgi_process_response(pTHX_ ngx_http_request_t *r, SV *response, PerlIn
     // Array should contain at least 3 elements
     if (av_len(psgir) < 2) {
         ngx_http_psgi_ctx_t *ctx = ngx_http_get_module_ctx(r, ngx_http_psgi_module);
-        if (!ctx->callback || av_len(psgir) < 1) {
+        if (!ctx->callback) {
 
-            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                    "PSGI app returned array with wrong length: %d",  av_len(psgir));
+            ngx_log_error(
+                    NGX_LOG_ERR, r->connection->log,
+                    0,
+                    "PSGI app is expected to return array of 3 elements. Returned %d",
+                    av_len(psgir)
+                    );
+
+            return NGX_HTTP_INTERNAL_SERVER_ERROR;
+
+        } else if (av_len(psgir) < 1) {
+
+            ngx_log_error(
+                    NGX_LOG_ERR, r->connection->log,
+                    0,
+                    "PSGI app returned an array of %d elements. Expected 2 or 3",
+                    av_len(psgir)
+                    );
 
             return NGX_HTTP_INTERNAL_SERVER_ERROR;
         }
