@@ -465,9 +465,8 @@ ngx_http_psgi_perl_exit(ngx_cycle_t *cycle)
 }
 
 ngx_int_t
-ngx_http_psgi_perl_call_psgi_callback(ngx_http_request_t *r)
+ngx_http_psgi_perl_call_psgi_callback(pTHX_ ngx_http_request_t *r)
 {
-    /* FIXME: Write actual code here */
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                     "Call PSGI callback");
 
