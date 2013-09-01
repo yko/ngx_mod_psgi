@@ -22,7 +22,7 @@ ngx_http_psgi_process_response(pTHX_ ngx_http_request_t *r, SV *response, PerlIn
         }
         ctx->callback = response;
         SvREFCNT_inc(ctx->callback);
-        return ngx_http_psgi_perl_call_psgi_callback(r);
+        return ngx_http_psgi_perl_call_psgi_callback(aTHX_ r);
     }
 
     // Response should be reference to ARRAY
