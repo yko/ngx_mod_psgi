@@ -13,8 +13,11 @@ default: build
 build: ${NGX_MAKE} configs
 	@make -C ${NGX_DIR}
 
-test: ${NGX_BIN} clean_logs configs
-	prove -lrv
+test: kill ${NGX_BIN} clean_logs configs
+	@PATH=${NGX_DIR}/objs:$$PATH            \
+	TEST_NGINX_PORT=3000 			        \
+	TEST_NGINX_SERVROOT="${HOME}/tmptest"	\
+		prove -lr ${FLAGS} ${TESTS}
 
 demo: kill clean_logs build configs
 	clear
@@ -39,12 +42,14 @@ demo: kill clean_logs build configs
 	@echo     ${HOME}/tmp/nginx.conf
 	@echo
 
+
 realclean: clean
 	@if [ -f "${NGX_DIR}/Makefile" ]; then \
 		make -C  "${NGX_DIR}" clean > /dev/null; \
 	fi
 	@rm  -rf "${NGX_DIR}" "${NGX_DIST}" 2>&1 || echo -n '' # Looks like I really need -f here
 	@rm  -r ${HOME}/tmp 2>/dev/null || echo -n ''
+	@rm  -r "${HOME}/tmptest" 2>/dev/null || echo -n ''
 	@rm  -r ${HOME}/log 2>/dev/null || echo -n ''
 
 clean: kill clean_logs
