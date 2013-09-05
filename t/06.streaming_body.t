@@ -18,8 +18,8 @@ __DATA__
     }
 --- request
     GET /
---- response_body_like: Streaming response body
+--- response_body_like: Hello Streaming World!
 --- response_headers
     Content-Encoding text/json
---- error_code: 203
+--- error_code: 201
 
