@@ -528,10 +528,7 @@ ngx_http_psgi_perl_call_psgi_callback(pTHX_ ngx_http_request_t *r)
 extern "C" {
 #endif
 XS(ngx_http_psgi_responder) {
-    dVAR; dXSARGS;
-    dXSI32;
-
-    // TODO: Throw meaningful exceptions
+    dXSARGS;
 
     if (items != 1) {
         croak("Usage: $ngx_http_psgi_responder->($reponse);");
@@ -556,14 +553,17 @@ XS(ngx_http_psgi_responder) {
             XSRETURN_UNDEF;
 
         case NGX_AGAIN:
-            // TODO: Delayed Response and Streaming Body, p.2: return Writer object
-            croak("PSGI handler execution failed: Streamin body is not implemented yet");
+            ngx_log_debug3(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                    "No HTTP Body in ngx_http_psgi_responder arguments. Returning Nginx::PSGI::Writer");
 
+            ST(0) = sv_newmortal();
+            sv_setref_pv( ST(0), "Nginx::PSGI::Writer", (void*)r );
+            XSRETURN(1);
+        break;
         default:
             croak("ngx_http_psgi_responder unexpected error [%i]", result);
     }
 
-    PERL_UNUSED_VAR(ix);
 }
 #ifdef __cplusplus
 }

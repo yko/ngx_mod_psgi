@@ -9,6 +9,7 @@ NGX_ADDON_SRCS="$NGX_ADDON_SRCS $ngx_addon_dir/src/ngx_http_psgi_response.c"
 NGX_ADDON_SRCS="$NGX_ADDON_SRCS $ngx_addon_dir/src/ngx_http_psgi_error_stream.c"
 NGX_ADDON_SRCS="$NGX_ADDON_SRCS $ngx_addon_dir/src/ngx_http_psgi_input_stream.c"
 NGX_ADDON_SRCS="$NGX_ADDON_SRCS $ngx_addon_dir/src/perlxsi.c"
+NGX_ADDON_SRCS="$NGX_ADDON_SRCS $ngx_addon_dir/src/ngx_http_psgi_writer.c"
 
 . auto/lib/perl/conf
 CFLAGS="$CFLAGS $NGX_PERL_CFLAGS"
