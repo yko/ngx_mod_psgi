@@ -50,6 +50,8 @@ ngx_http_psgi_process_array_response(pTHX_ ngx_http_request_t *r, SV *response)
     if (av_len(psgir) < 2) {
         ngx_http_psgi_ctx_t *ctx = ngx_http_get_module_ctx(r, ngx_http_psgi_module);
         if (!ctx->callback) {
+            /* An application MAY omit the third element (the body)
+             * ONLY when calling the responder */
 
             ngx_log_error(
                     NGX_LOG_ERR, r->connection->log,
@@ -88,12 +90,19 @@ ngx_http_psgi_process_array_response(pTHX_ ngx_http_request_t *r, SV *response)
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
 
-    // Process body
+    /* PSGI spec, 'Delayed Response and Streaming Body' p. 2
+     * An application MAY omit the third element (the body) when calling
+     * the responder. If the body is omitted,
+     * the responder MUST return yet another object which implements write
+     * and close methods.
+     */
 
+    if (av_len(psgir) < 2) {
+        return NGX_AGAIN;
+    }
 
     SV **body = av_fetch(psgir, 2, 0);
     return ngx_http_psgi_process_body(aTHX_ r, *body);
-
 }
 
 ngx_int_t

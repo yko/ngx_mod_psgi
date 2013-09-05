@@ -2,7 +2,10 @@
 #include "ngx_http_psgi_response.h"
 #include "ngx_http_psgi_error_stream.h"
 #include "ngx_http_psgi_input_stream.h"
+#include "XSUB.h"
+
 EXTERN_C void xs_init (pTHX);
+XS(ngx_http_psgi_responder);
 
 SV *ngx_http_psgi_create_env(pTHX_ ngx_http_request_t *r, char *app)
 {
@@ -468,11 +471,100 @@ ngx_int_t
 ngx_http_psgi_perl_call_psgi_callback(pTHX_ ngx_http_request_t *r)
 {
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                    "Call PSGI callback");
+            "Call PSGI callback");
 
-    ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-            "PSGI callback is not implemented yet");
 
-    return NGX_ERROR;
+    CV *cv = newXS(NULL, ngx_http_psgi_responder, (const char*)__FILE__);
+    MAGIC* mg
+        = sv_magicext((SV*)cv, NULL, PERL_MAGIC_ext, NULL, (const char*)r, 0);
+    if (!mg) {
+        croak("Failed to attach ngx_http_request_t to ngx_http_psgi_responder sub");
+    }
 
+    ngx_http_psgi_ctx_t *ctx = ngx_http_get_module_ctx(r, ngx_http_psgi_module);
+
+    {
+        dSP;
+        ENTER;
+        SAVETMPS;
+        PUSHMARK(SP);
+
+        XPUSHs(sv_2mortal( newRV((SV*) cv) ));
+
+        PUTBACK;
+
+        int count = call_sv(
+                ctx->callback,
+                G_EVAL|G_SCALAR
+                );
+
+        ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                "PSGI callback response: %d elements", count);
+
+        SPAGAIN;
+
+        // TODO: Process response
+        if (SvTRUE(ERRSV))
+        {
+            ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                    "PSGI handler callback returned an error: %s", SvPV_nolen(ERRSV));
+
+            ngx_http_finalize_request(r, NGX_HTTP_INTERNAL_SERVER_ERROR);
+        }
+
+        PUTBACK;
+        FREETMPS;
+        LEAVE;
+    }
+
+    ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
+            "After running PSGI Responder request count is %i", r->main->count);
+
+    // TODO: Install timeout
+    return NGX_OK;
 }
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+XS(ngx_http_psgi_responder) {
+    dVAR; dXSARGS;
+    dXSI32;
+
+    // TODO: Throw meaningful exceptions
+
+    if (items != 1) {
+        croak("Usage: $ngx_http_psgi_responder->($reponse);");
+    }
+
+    MAGIC *mg = mg_find((SV*)cv, PERL_MAGIC_ext);
+    if (!mg) {
+        croak("ngx_http_request_t not found in ngx_http_psgi_responder");
+    }
+
+    ngx_http_request_t *r = (ngx_http_request_t *)mg->mg_ptr;
+
+    ngx_int_t result = ngx_http_psgi_process_array_response(pTHX_ r, SvRV(ST(0)));
+
+    switch (result) {
+        case NGX_HTTP_INTERNAL_SERVER_ERROR:
+            croak("ngx_http_psgi_responder error");
+
+        case NGX_DONE:
+        case NGX_OK:
+            // Nothing to do here
+            XSRETURN_UNDEF;
+
+        case NGX_AGAIN:
+            // TODO: Delayed Response and Streaming Body, p.2: return Writer object
+            croak("PSGI handler execution failed: Streamin body is not implemented yet");
+
+        default:
+            croak("ngx_http_psgi_responder unexpected error [%i]", result);
+    }
+
+    PERL_UNUSED_VAR(ix);
+}
+#ifdef __cplusplus
+}
+#endif
