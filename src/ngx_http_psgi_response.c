@@ -183,31 +183,29 @@ ngx_http_psgi_process_body(pTHX_ ngx_http_request_t *r, SV *body)
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
 
-    body = SvRV(body);
+    int body_type = SvTYPE(SvRV(body));
 
-    switch (SvTYPE(body)) {
-        case SVt_PVAV:
-            return ngx_http_psgi_process_body_array(aTHX_ r, (AV*)body);
-
-        case SVt_PVMG:
-        case SVt_PVGV:
-            return ngx_http_psgi_process_body_glob(aTHX_ r, (GV*)body);
-
-        default:
-            ngx_log_error(
-                    NGX_LOG_ERR, r->connection->log, 0,
-                    "PSGI app returned body of unsupported type: %s",
-                    SvPV_nolen(body));
-
-            return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    if (body_type == SVt_PVGV || sv_isobject(body)) {
+        return ngx_http_psgi_process_body_glob(aTHX_ r, body);
     }
+
+    if (body_type == SVt_PVAV) {
+        return ngx_http_psgi_process_body_array(aTHX_ r, (AV*)SvRV(body));
+    }
+
+    ngx_log_error(
+            NGX_LOG_ERR, r->connection->log, 0,
+            "PSGI app returned body of unsupported type [%i] : '%s'",
+            body_type, SvPV_nolen(body));
+
+    return NGX_HTTP_INTERNAL_SERVER_ERROR;
 }
 
 ngx_int_t
-ngx_http_psgi_process_body_glob(pTHX_ ngx_http_request_t *r, GV *body)
+ngx_http_psgi_process_body_glob(pTHX_ ngx_http_request_t *r, SV *body)
 {
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-            "PSGI app returned filehandle: %s", SvPV_nolen(newRV((SV*)body)));
+            "PSGI app returned handle '%s'", SvPV_nolen((SV*)body));
 
     ngx_chain_t   *first_chain = NULL;
     ngx_chain_t   *last_chain  = NULL;
@@ -226,7 +224,7 @@ ngx_http_psgi_process_body_glob(pTHX_ ngx_http_request_t *r, GV *body)
         SAVETMPS;
 
         PUSHMARK(SP);
-        XPUSHs(newRV((SV*)body));
+        XPUSHs(body);
         PUTBACK;
 
         call_method("getline", G_SCALAR|G_EVAL);
@@ -238,10 +236,9 @@ ngx_http_psgi_process_body_glob(pTHX_ ngx_http_request_t *r, GV *body)
         if (SvTRUE(ERRSV))
         {
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                    "Error reading from FH: %s", SvPV_nolen(ERRSV));
+                    "Error reading from a handle: '%s'", SvPV_nolen(ERRSV));
             return NGX_HTTP_INTERNAL_SERVER_ERROR;
         } else if (!SvOK(buffer)) {
-            /* FIXME: This sounds wrong. I think I should check for eof */
             data = 0;
         } else {
             u_char              *p = NULL;
