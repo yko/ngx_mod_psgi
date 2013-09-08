@@ -229,7 +229,7 @@ ngx_http_psgi_process_body_glob(pTHX_ ngx_http_request_t *r, GV *body)
         XPUSHs(newRV((SV*)body));
         PUTBACK;
 
-        call_method("getline", G_SCALAR);
+        call_method("getline", G_SCALAR|G_EVAL);
 
         SPAGAIN;
 
