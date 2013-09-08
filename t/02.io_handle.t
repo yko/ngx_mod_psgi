@@ -27,7 +27,7 @@ __DATA__
     }
 --- request
     GET /getline_exception
---- response_body_like: 500 Internal Server Error
+--- response_body_like: ^Line by IO::Handle::ErrorGetline\nLine by IO::Handle::ErrorGetline\nLine by IO::Handle::ErrorGetline\nLine by IO::Handle::ErrorGetline\nLine by IO::Handle::ErrorGetline\nLine by IO::Handle::ErrorGetline\n$
 --- response_headers
     test_header test_val
 --- error_code: 200

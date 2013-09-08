@@ -209,6 +209,7 @@ ngx_http_psgi_process_body_glob(pTHX_ ngx_http_request_t *r, SV *body)
 
     ngx_chain_t   *first_chain = NULL;
     ngx_chain_t   *last_chain  = NULL;
+    int result = NGX_OK;
     bool data = 1;
 
     /* TODO: Call $body->close when done
@@ -218,7 +219,16 @@ ngx_http_psgi_process_body_glob(pTHX_ ngx_http_request_t *r, SV *body)
      * FIXME: This sucks. Readline can return lines 1-10 bytes long. Buffer data instead of chaining each line
      */
 
-    while (data) {
+    // TODO: bufsize should be defined in context and then reused
+    SV * ngx_sv_bufsize = newSViv(8192);
+    SV * ngx_PL_rs = sv_2mortal(newRV_noinc(ngx_sv_bufsize));
+
+    // TODO: find out what is the right way to do local $/ = \123
+    SV *old_rs = PL_rs;
+    sv_setsv(PL_rs, ngx_PL_rs); // $/ = \8192
+    sv_setsv(get_sv("/", GV_ADD), PL_rs);
+
+    while (data && result < NGX_HTTP_SPECIAL_RESPONSE) {
         dSP;
         ENTER;
         SAVETMPS;
@@ -237,18 +247,22 @@ ngx_http_psgi_process_body_glob(pTHX_ ngx_http_request_t *r, SV *body)
         {
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                     "Error reading from a handle: '%s'", SvPV_nolen(ERRSV));
-            return NGX_HTTP_INTERNAL_SERVER_ERROR;
+            result = NGX_HTTP_INTERNAL_SERVER_ERROR;
         } else if (!SvOK(buffer)) {
             data = 0;
         } else {
-            u_char              *p = NULL;
+            u_char              *p;
             STRLEN               len;
             p = (u_char*)SvPV(buffer, len);
-
-            if (chain_buffer(r, p, len, &first_chain, &last_chain) != NGX_OK) {
-                ngx_log_error(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                        "Error chaining psgi response buffer");
-                return NGX_HTTP_INTERNAL_SERVER_ERROR;
+            if (len) { // Skip zero-length but defined chunks
+                if (chain_buffer(r, p, len, &first_chain, &last_chain) != NGX_OK) {
+                    ngx_log_error(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                            "Error chaining psgi response buffer");
+                    result = NGX_HTTP_INTERNAL_SERVER_ERROR;
+                }
+            } else {
+                ngx_http_output_filter(r, first_chain);
+                first_chain = last_chain = NULL;
             }
         }
 
@@ -257,14 +271,15 @@ ngx_http_psgi_process_body_glob(pTHX_ ngx_http_request_t *r, SV *body)
         LEAVE;
     }
 
-    if (first_chain == NULL)
-        return NGX_DONE;
+    PL_rs = old_rs;
+    sv_setsv(get_sv("/", GV_ADD), old_rs);
 
-    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-            "Reached end of PSGI response filehandle");
+    if (first_chain != NULL) {
+        ngx_http_output_filter(r, first_chain);
+        return result;
+    }
 
-    ngx_http_output_filter(r, first_chain);
-    return NGX_OK;
+    return result < NGX_HTTP_SPECIAL_RESPONSE ? NGX_DONE : result;
 }
 
 ngx_int_t
