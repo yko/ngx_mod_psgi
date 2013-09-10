@@ -6,7 +6,8 @@ NGX_MAKE = ${NGX_DIR}/Makefile
 TMP_CONF = ${HOME}/tmp/nginx.conf
 TMP_CONF_TEMPLATE = ${HOME}/eg/nginx.conf
 PIDFILE = ${HOME}/tmp/nginx.pid
-NGX_BIN = ${NGX_DIR}/objs/nginx
+NGX_OBJDIR = ${NGX_DIR}/objs
+NGX_BIN = ${NGX_OBJDIR}/nginx
 
 default: build
 
@@ -54,7 +55,7 @@ realclean: clean
 
 clean: kill clean_logs
 	@rm   -r  ${HOME}/tmp/* 2>/dev/null || echo -n ''
-	@rm       ${NGX_BIN} || echo -n ''
+	@make -C ${NGX_DIR} clean
 
 clean_logs:
 	@rm       ${HOME}/log/* 2>/dev/null || echo -n ''
@@ -81,6 +82,7 @@ ${TMP_CONF}:
 
 ${NGX_MAKE}: ${NGX_DIR}
 	@cd ${NGX_DIR}; ./configure \
+		${NGX_CONF_OPTS} \
 		--without-http_charset_module \
 		--without-http_gzip_module \
 		--without-http_ssi_module \
@@ -118,3 +120,36 @@ ${NGX_DIR}: ${NGX_DIST}
 ${NGX_DIST}:
 	@echo Downloading nginx dist: ${NGX_DIST}
 	@curl -O http://nginx.org/download/${NGX_DIST}
+
+cover:
+	@perl -e 'require Devel::Cover' || (echo "\nDevel:Cover required" && exit 255)
+	@-rm ${NGX_OBJDIR}/Makefile
+	@-rm ${NGX_OBJDIR}/Makefile.coverage
+	@-rm ${NGX_MAKE}
+	@-rm ${NGX_BIN}
+	make ${NGX_OBJDIR}/Makefile.coverage
+	make -C ${NGX_DIR} -f ${NGX_OBJDIR}/Makefile.coverage psgi_cover
+	make ${NGX_BIN}
+	-find . -name \*.gcov -delete
+	-find ${NGX_OBJDIR} -name \*.gcna -delete
+	-rm -r cover_db
+	-make test
+	find ${NGX_OBJDIR}/addon -name \*.gcno | while read gcno; \
+	do \
+		gcov -o $$(dirname $$gcno) $$gcno; \
+	done
+	find . -name \*.gcov -print0 | xargs -0 gcov2perl
+	cover
+	@rm *.gcov
+	@rm ${NGX_OBJDIR}/Makefile.coverage
+	echo "Open cover_db/coverage.html to see test coverage"
+
+${NGX_OBJDIR}/Makefile.coverage:
+	NGX_CONF_OPTS="--with-ld-opt=-lgcov" make ${NGX_MAKE}
+	cp ${NGX_OBJDIR}/Makefile ${NGX_OBJDIR}/Makefile.coverage
+	echo "\npsgi_cover:" >> ${NGX_OBJDIR}/Makefile.coverage;
+	find src -name \*.c | while read file; do \
+		oname=$$( basename $$file | sed -e 's/.c$$/.o/' ); \
+		absname=$$( readlink -f $$file ); \
+		echo "	\$$(CC) -c \$$(CFLAGS) -fprofile-arcs -ftest-coverage \$$(ALL_INCS) -o objs/addon/src/$$oname $$absname" >> ${NGX_OBJDIR}/Makefile.coverage; \
+	done
