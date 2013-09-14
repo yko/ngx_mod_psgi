@@ -55,7 +55,9 @@ realclean: clean
 
 clean: kill clean_logs
 	@rm   -r  ${HOME}/tmp/* 2>/dev/null || echo -n ''
-	@make -C ${NGX_DIR} clean
+	@if [ -f ${NGX_MAKE} ]; then make -C ${NGX_DIR} clean; fi
+	@rm -f ${HOME}/*.gcov
+	@if [ -d ${HOME}/cover_db ]; then rm -r ${HOME}/cover_db; fi
 
 clean_logs:
 	@rm       ${HOME}/log/* 2>/dev/null || echo -n ''
@@ -121,10 +123,9 @@ ${NGX_DIST}:
 	@echo Downloading nginx dist: ${NGX_DIST}
 	@curl -O http://nginx.org/download/${NGX_DIST}
 
-cover:
-	@perl -e 'require Devel::Cover' || (echo "\nDevel:Cover required" && exit 255)
-	if ! grep '-lgcov' ${NGX_MAKE}; then                       \
-		@-rm ${NGX_MAKE};                                      \
-		NGX_CONF_OPTS="--with-ld-opt=-lgcov" make ${NGX_MAKE}; \
+cover: dirs
+	@if ! grep -s -- '-lgcov' ${NGX_OBJDIR}/Makefile; then       \
+		rm -f ${NGX_MAKE};                                       \
+		NGX_CONF_OPTS="--with-ld-opt=-lgcov" make ${NGX_MAKE};   \
 	fi
-	util/make_coverage.sh ${NGX_DIR}
+	util/ngx_coverage.pl "${NGX_DIR}"
