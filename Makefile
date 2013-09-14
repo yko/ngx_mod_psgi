@@ -123,33 +123,8 @@ ${NGX_DIST}:
 
 cover:
 	@perl -e 'require Devel::Cover' || (echo "\nDevel:Cover required" && exit 255)
-	@-rm ${NGX_OBJDIR}/Makefile
-	@-rm ${NGX_OBJDIR}/Makefile.coverage
-	@-rm ${NGX_MAKE}
-	@-rm ${NGX_BIN}
-	make ${NGX_OBJDIR}/Makefile.coverage
-	make -C ${NGX_DIR} -f ${NGX_OBJDIR}/Makefile.coverage psgi_cover
-	make ${NGX_BIN}
-	-find . -name \*.gcov -delete
-	-find ${NGX_OBJDIR} -name \*.gcna -delete
-	-rm -r cover_db
-	-make test
-	find ${NGX_OBJDIR}/addon -name \*.gcno | while read gcno; \
-	do \
-		gcov -o $$(dirname $$gcno) $$gcno; \
-	done
-	find . -name \*.gcov -print0 | xargs -0 gcov2perl
-	cover
-	@rm *.gcov
-	@rm ${NGX_OBJDIR}/Makefile.coverage
-	echo "Open cover_db/coverage.html to see test coverage"
-
-${NGX_OBJDIR}/Makefile.coverage:
-	NGX_CONF_OPTS="--with-ld-opt=-lgcov" make ${NGX_MAKE}
-	cp ${NGX_OBJDIR}/Makefile ${NGX_OBJDIR}/Makefile.coverage
-	echo "\npsgi_cover:" >> ${NGX_OBJDIR}/Makefile.coverage;
-	find src -name \*.c | while read file; do \
-		oname=$$( basename $$file | sed -e 's/.c$$/.o/' ); \
-		absname=$$( readlink -f $$file ); \
-		echo "	\$$(CC) -c \$$(CFLAGS) -fprofile-arcs -ftest-coverage \$$(ALL_INCS) -o objs/addon/src/$$oname $$absname" >> ${NGX_OBJDIR}/Makefile.coverage; \
-	done
+	if ! grep '-lgcov' ${NGX_MAKE}; then                       \
+		@-rm ${NGX_MAKE};                                      \
+		NGX_CONF_OPTS="--with-ld-opt=-lgcov" make ${NGX_MAKE}; \
+	fi
+	util/make_coverage.sh ${NGX_DIR}
