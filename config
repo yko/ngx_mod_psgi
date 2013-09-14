@@ -3,12 +3,8 @@ ngx_addon_name=ngx_http_psgi_module
 USE_PERL=YES
 
 HTTP_MODULES="$HTTP_MODULES ngx_http_psgi_module"
-NGX_ADDON_SRCS="$NGX_ADDON_SRCS $ngx_addon_dir/src/ngx_http_psgi_module.c"
-NGX_ADDON_SRCS="$NGX_ADDON_SRCS $ngx_addon_dir/src/ngx_http_psgi_perl.c"
-NGX_ADDON_SRCS="$NGX_ADDON_SRCS $ngx_addon_dir/src/ngx_http_psgi_response.c"
-NGX_ADDON_SRCS="$NGX_ADDON_SRCS $ngx_addon_dir/src/ngx_http_psgi_error_stream.c"
-NGX_ADDON_SRCS="$NGX_ADDON_SRCS $ngx_addon_dir/src/ngx_http_psgi_input_stream.c"
-NGX_ADDON_SRCS="$NGX_ADDON_SRCS $ngx_addon_dir/src/perlxsi.c"
+NGX_ADDON_SRCS="$NGX_ADDON_SRCS $ngx_addon_dir/src/ngx_http_psgi_module.c $ngx_addon_dir/src/ngx_http_psgi_perl.c $ngx_addon_dir/src/ngx_http_psgi_response.c $ngx_addon_dir/src/ngx_http_psgi_error_stream.c $ngx_addon_dir/src/ngx_http_psgi_input_stream.c $ngx_addon_dir/src/perlxsi.c"
+NGX_ADDON_DEPS="$NGX_ADDON_DEPS $ngx_addon_dir/src/ngx_http_psgi_perl.h $ngx_addon_dir/src/ngx_http_psgi_input_stream.h $ngx_addon_dir/src/ngx_http_psgi_error_stream.h $ngx_addon_dir/src/ngx_http_psgi_response.h $ngx_addon_dir/src/ngx_http_psgi_module.h"
 
 . auto/lib/perl/conf
 CFLAGS="$CFLAGS $NGX_PERL_CFLAGS"
