@@ -1,5 +1,6 @@
 NGX_DIR=$1;
 NGX_OBJDIR=${NGX_DIR}/objs;
+NGX_BIN=${NGX_OBJDIR}/nginx;
 NGX_MAKEFILE=${NGX_OBJDIR}/Makefile
 NGX_COVER_MAKEFILE=${NGX_MAKEFILE}.cover
 
@@ -25,22 +26,23 @@ if ! which cover; then
     exit 255;
 fi
 
-cp ${NGX_MAKEFILE} ${NGX_COVER_MAKEFILE};
 echo "Setting up makefile ${NGX_COVER_MAKEFILE}"
+cp ${NGX_MAKEFILE} ${NGX_COVER_MAKEFILE};
 echo >> ${NGX_COVER_MAKEFILE};
 echo "cover:" >> ${NGX_COVER_MAKEFILE};
 find src -name \*.c | while read file; do \
-    oname=$( basename $file | sed -e 's/.c$$/.o/' );
+    oname=$( basename $file | sed -e 's/.c$/.o/' );
     absname=$( readlink -f $file );
     echo "	\$(CC) -c \$(CFLAGS) -fprofile-arcs -ftest-coverage \$(ALL_INCS) -o objs/addon/src/$oname $absname" >> ${NGX_MAKEFILE}.cover;
 done
 
 find . -name \*.gcov -delete;
-find ${NGX_DIR} -name \*.gcna -delete;
+find ${NGX_DIR} -name \*.gcda -name \*.gcno -delete;
+rm ${NGX_BIN}
 rm -r cover_db;
 
 make -C ${NGX_DIR} -f ${NGX_COVER_MAKEFILE} cover || exit $?
-make -C ${NGX_DIR} || exit $?
+make -C ${NGX_DIR} -f ${NGX_COVER_MAKEFILE} || exit $?
 
 PATH=$NGX_OBJDIR:$PATH prove -mr
 
