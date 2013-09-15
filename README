@@ -48,7 +48,7 @@ AUTHOR
     Yaroslav Korshak
 
 COPYRIGHT
-    Yaroslav Korshak, 2011
+    Yaroslav Korshak, 2011-2013
 
 LICENSE
     This software is licensed under the same terms as Perl itself.
@@ -56,7 +56,7 @@ LICENSE
 SEE ALSO
     nginx <http://nginx.org>
 
-    PSGI spec <https://github.com/miyagawa/psgi-specs>
+    PSGI spec <https://github.com/plack/psgi-specs>
 
     yappo's psgi patch <https://github.com/yappo/nginx-psgi-patchs>
 
