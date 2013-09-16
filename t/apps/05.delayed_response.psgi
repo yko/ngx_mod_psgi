@@ -5,7 +5,7 @@ use warnings;
 my $app = sub {
     my $env = shift;
 
-    my $headers = [test_header => "test_val"];
+    my $headers = ['test-header' => "test_val"];
 
     # Delays response until it fetches content from the network
     return sub {
