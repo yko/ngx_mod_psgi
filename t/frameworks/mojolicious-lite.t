@@ -8,7 +8,6 @@ unless ($ENV{WITH_MOJOLICIOUS}) {
     diag "using Mojolicious v$Mojolicious::VERSION";
 }
 
-repeat_each(1);
 no_root_location();
 
 plan tests => 4 * repeat_each() * blocks();
@@ -22,10 +21,9 @@ __DATA__
     location / {
         psgi t/apps/frameworks/mojolicious-lite.psgi;
     }
---- request
-    GET /hello/nginx
---- response_body_like: Why, hello there nginx
+--- request: GET /hello/nginx
+--- error_code: 200
 --- response_headers
     Foo: Bar
     Hello: World!
---- error_code: 200
+--- response_body: Why, hello there nginx

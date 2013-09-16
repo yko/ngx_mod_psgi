@@ -35,7 +35,7 @@ use warnings;
 my $app = sub {
     my $env = shift;
 
-    my $headers = [test_header => "test_val"];
+    my $headers = ['test-header' => "test_val"];
 
     my $body;
     if ($env->{REQUEST_URI} eq '/getline_exception') {

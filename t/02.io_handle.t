@@ -1,6 +1,5 @@
 use Test::Nginx::Socket;
 
-repeat_each(1);
 no_root_location();
 
 plan tests => 3 * repeat_each() * blocks();
@@ -13,33 +12,56 @@ __DATA__
     location / {
         psgi t/apps/02.io_handle.psgi;
     }
---- request
-    GET /
---- response_body_like: Line by IO::Handle::OK\nLine by IO::Handle::OK\nLine by IO::Handle::OK\nLine by IO::Handle::OK\nLine by IO::Handle::OK\nLine by IO::Handle::OK\nLine by IO::Handle::OK\nLine by IO::Handle::OK\nLine by IO::Handle::OK\nLine by IO::Handle::OK\n
---- response_headers
-    test_header test_val
+--- request: GET /
 --- error_code: 200
+--- response_headers
+    test_header: test_val
+--- response_body
+Line by IO::Handle::OK
+Line by IO::Handle::OK
+Line by IO::Handle::OK
+Line by IO::Handle::OK
+Line by IO::Handle::OK
+Line by IO::Handle::OK
+Line by IO::Handle::OK
+Line by IO::Handle::OK
+Line by IO::Handle::OK
+Line by IO::Handle::OK
 
 === IO::Handle-like object throws and error in getline()
 --- config
     location / {
         psgi t/apps/02.io_handle.psgi;
     }
---- request
-    GET /getline_exception
---- response_body_like: ^Line by IO::Handle::ErrorGetline\nLine by IO::Handle::ErrorGetline\nLine by IO::Handle::ErrorGetline\nLine by IO::Handle::ErrorGetline\nLine by IO::Handle::ErrorGetline\nLine by IO::Handle::ErrorGetline\n$
---- response_headers
-    test_header test_val
+--- request: GET /getline_exception
 --- error_code: 200
+--- response_headers
+    test-header: test_val
+--- response_body
+Line by IO::Handle::ErrorGetline
+Line by IO::Handle::ErrorGetline
+Line by IO::Handle::ErrorGetline
+Line by IO::Handle::ErrorGetline
+Line by IO::Handle::ErrorGetline
+Line by IO::Handle::ErrorGetline
 
 === IO::Handle-like object throws and error in close()
 --- config
     location / {
         psgi t/apps/02.io_handle.psgi;
     }
---- request
-    GET /close_exception
---- response_body_like: Line by IO::Handle::ErrorClose
---- response_headers
-    test_header test_val
+--- request: GET /close_exception
 --- error_code: 200
+--- response_headers
+    test-header: test_val
+--- response_body
+Line by IO::Handle::ErrorClose
+Line by IO::Handle::ErrorClose
+Line by IO::Handle::ErrorClose
+Line by IO::Handle::ErrorClose
+Line by IO::Handle::ErrorClose
+Line by IO::Handle::ErrorClose
+Line by IO::Handle::ErrorClose
+Line by IO::Handle::ErrorClose
+Line by IO::Handle::ErrorClose
+Line by IO::Handle::ErrorClose
