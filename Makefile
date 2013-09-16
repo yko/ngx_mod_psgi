@@ -7,6 +7,7 @@ TMP_CONF = ${HOME}/tmp/nginx.conf
 TMP_CONF_TEMPLATE = ${HOME}/eg/nginx.conf
 PIDFILE = ${HOME}/tmp/nginx.pid
 NGX_OBJDIR = ${NGX_DIR}/objs
+NGX_TMPROOT = ${HOME}/tmpserverroot
 NGX_BIN = ${NGX_OBJDIR}/nginx
 
 default: build
@@ -15,9 +16,9 @@ build: ${NGX_MAKE} configs
 	@make -C ${NGX_DIR}
 
 test: kill ${NGX_BIN} clean_logs configs
-	@PATH=${NGX_DIR}/objs:$$PATH            \
-	TEST_NGINX_PORT=3000 			        \
-	TEST_NGINX_SERVROOT="${HOME}/tmptest"	\
+	@PATH=${NGX_DIR}/objs:$$PATH           \
+	TEST_NGINX_PORT=3000                   \
+	TEST_NGINX_SERVROOT="${NGX_TMPROOT}"   \
 		prove -lr ${FLAGS} ${TESTS}
 
 demo: kill clean_logs build configs
@@ -50,7 +51,7 @@ realclean: clean
 	fi
 	@rm  -rf "${NGX_DIR}" "${NGX_DIST}" 2>&1 || echo -n '' # Looks like I really need -f here
 	@rm  -r ${HOME}/tmp 2>/dev/null || echo -n ''
-	@rm  -r "${HOME}/tmptest" 2>/dev/null || echo -n ''
+	@if [ -d "${NGX_TMPROOT}" ]; then rm  -r "${NGX_TMPROOT}"; fi
 	@rm  -r ${HOME}/log 2>/dev/null || echo -n ''
 
 clean: kill clean_logs

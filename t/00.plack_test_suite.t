@@ -1,53 +1,72 @@
 use strict;
 use warnings;
-BEGIN {
-    use Test::More;
-    eval { require Plack::Test::Suite };
-    if ($@) {
-        plan skip_all => "Plack::Test::Suite required for this test";
+
+use Test::Base -Base;
+use Test::More;
+
+use Test::Nginx::Util qw(
+  run_tests
+  $ServerPortForClient
+  $RunTestHelper
+  no_shuffle
+  master_on
+  master_off
+  no_root_location
+  get_nginx_version
+  trim
+);
+
+eval { require Plack::Test::Suite }
+  or plan skip_all => "Plack::Test::Suite required for this test";
+
+$RunTestHelper = sub ($$) {
+    my ($block, $dry_run) = @_;
+
+    diag $block->name;
+
+    my $mp = lc(trim($block->master_process || 'off'));
+
+    if    ($mp eq 'off') { master_off() }
+    elsif ($mp eq 'on')  { master_on() }
+    else { BAIL_OUT("Unsupported value for master_process: '$mp'") }
+
+    if (my $pid = fork) {
+        waitpid $pid, 0;
+        if ($?) {
+            BAIL_OUT("Plack::Test::Suite exited with " . ($? >> 8));
+        }
     }
-}
-use FindBin;
-use Cwd 'abs_path';
+    else {
+        $Test::Nginx::Util::InSubprocess = 1;
+        Plack::Test::Suite->run_server_tests(sub { }, $ServerPortForClient);
+        exit;
+    }
+};
 
-my $nginx     = 'http://nginx.org/download/nginx-1.0.4.tar.gz';
-my $nginx_dir = 'nginx-1.0.4';
-local $/ = undef;
+get_nginx_version();
 
-my $home = abs_path("$FindBin::Bin/..");
-my $tmp_conf = "$home/tmp/nginx.conf";
-my $conf_template = "$home/eg/nginx.conf";
-my $pidfile = "$home/tmp/nginx.pid";
+diag "Testing nginx v$Test::Nginx::Util::NginxRawVersion";
 
-Plack::Test::Suite->run_server_tests(\&run_httpd);
+no_root_location();
+
+# Order matters here: once you set master_off, you can not switch back
+no_shuffle();
+
+run_tests();
 done_testing();
 
-if (-f $pidfile) {
-    my $pid = do { open my $PID, '<', $pidfile; <$PID> };
-    kill 2, $pid;
-}
+__DATA__
 
-sub run_httpd {
-    my $port = shift;
-
-    my $conf_body = do { open my $CNF, '<', $conf_template; <$CNF> };
-
-    $conf_body
-      =~ s#(\n\s*error_log\s+).*#$1"$home/log/error.local.log" debug;#;
-    $conf_body =~ s#(\n\s*psgi)\s+.*#$1 "$home/eg/plack_test_suite.psgi";#;
-    $conf_body =~ s#127\.0\.0\.1:\d+#127.0.0.1:$port#g;
-
-    open my $CNF, '>', $tmp_conf
-      or die "Unable to create temporarry conf '$tmp_conf': $!";
-    print $CNF $conf_body;
-
-    # Kill running nginx
-    if (-f $pidfile) {
-
-        my $pid = do { open my $PID, '<', $pidfile; <$PID> };
-        kill 2, $pid;
+=== Plack::Test::Suite with master process
+--- config
+    location / {
+        psgi t/apps/00.plack_test_suite.psgi;
     }
+--- master_process: on
 
-    system("$home/$nginx_dir/objs/nginx") and die "nginx failed to start\n";
-    unlink $tmp_conf;
-}
+=== Plack::Test::Suite without master process
+--- config
+    location / {
+        psgi t/apps/00.plack_test_suite.psgi;
+    }
+--- master_process: off
