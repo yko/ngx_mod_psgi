@@ -341,14 +341,12 @@ chain_buffer(ngx_http_request_t *r, u_char *p, STRLEN len, ngx_chain_t **first, 
     if (out == NULL)
         return NGX_ERROR;
 
-    ngx_buf_t    *b = ngx_calloc_buf(r->pool);
+    ngx_buf_t    *b = ngx_create_temp_buf(r->pool, len);
     if (b == NULL)
         return NGX_ERROR;
 
-    b->pos = b->start = ngx_palloc(r->pool, len);
-    ngx_memcpy(b->pos, p, len);
+    ngx_memcpy(b->start, p, len);
     b->end = b->last = b->start + len;
-    b->memory = 1;
     b->last_buf = 1;
 
     out->buf = b;
