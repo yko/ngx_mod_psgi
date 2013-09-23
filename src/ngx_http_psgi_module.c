@@ -94,23 +94,16 @@ ngx_http_psgi_init_worker(ngx_cycle_t *cycle)
 ngx_int_t
 ngx_http_psgi_handler(ngx_http_request_t *r)
 {
-    if (r->headers_in.content_length_n == 0) {
-        ngx_http_psgi_handler_with_body(r);
-        return NGX_OK;
-    }
-
     r->request_body_in_single_buf = 1;
     r->request_body_in_persistent_file = 1;
     r->request_body_in_clean_file = 1;
-
-    if (r->request_body_in_file_only) {
-        r->request_body_file_log_level = 0;
-    }
+    r->request_body_file_log_level = 0;
 
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                     "Loading body for PSGI request");
 
     ngx_http_read_client_request_body(r, ngx_http_psgi_handler_with_body);
+    /* TODO: Handle errors */
 
     return NGX_OK;
 }
