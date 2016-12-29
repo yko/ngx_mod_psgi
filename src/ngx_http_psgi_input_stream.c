@@ -50,7 +50,7 @@ PerlIONginxInput_read(pTHX_ PerlIO *f, void *vbuf, Size_t count)
         return 0;
     }
 
-    len = len > count ? count : len;
+    len = len > (off_t)count ? (off_t)count : len;
 
     Copy(r->request_body->bufs->buf->pos + st->pos, vbuf, len, STDCHAR);
 
